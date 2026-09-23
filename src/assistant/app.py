@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import signal
+import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,8 +23,10 @@ from .config import AppConfig, CoursesConfig, Settings, load_app_config, load_co
 from .db import Store
 from .gcal import GoogleCalendar
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
+from .status import describe_runtime
 from .todoist_client import TodoistClient
 from .web import WebReader
+from . import __version__
 
 log = logging.getLogger(__name__)
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
@@ -88,7 +91,20 @@ async def serve(rt: Runtime) -> None:
     if not rt.settings.telegram_bot_token:
         raise SystemExit("TELEGRAM_BOT_TOKEN is empty in .env (create a bot with @BotFather, see README)")
 
-    channel = TelegramChannel(rt.settings.telegram_bot_token, rt.settings.allowed_chat_ids, rt.session.handle)
+    started_at = now_utc()
+
+    def status_text() -> str:
+        last_scan = rt.store.kv_get("last_scan")
+        sync = rt.store.last_run("sync")
+        return describe_runtime(
+            hostname=socket.gethostname(), in_docker=Path("/.dockerenv").exists(), version=__version__,
+            started_at=started_at, now=now_utc(), tz=rt.settings.tz,
+            last_scan=datetime.fromisoformat(last_scan) if last_scan else None,
+            last_sync_at=sync[0] if sync else None, last_sync_ok=sync[1] if sync else None,
+        )
+
+    channel = TelegramChannel(rt.settings.telegram_bot_token, rt.settings.allowed_chat_ids, rt.session.handle,
+                              status=status_text)
     if not rt.settings.allowed_chat_ids:
         log.warning("TELEGRAM_CHAT_IDS is empty: setup mode. Send /start to the bot to learn your chat id.")
 

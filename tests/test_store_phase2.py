@@ -78,3 +78,13 @@ def test_store_is_usable_from_worker_threads(tmp_path):
         fid = pool.submit(lambda: s.remember("worker thread fact", now=NOW)).result()
     assert texts == ["main thread fact"] and fid > 0
     assert [f.text for f in s.facts()] == ["main thread fact", "worker thread fact"]
+
+
+def test_last_run_reports_the_most_recent_finished_job(tmp_path):
+    s = make_store(tmp_path)
+    assert s.last_run("sync") is None
+    r1 = s.start_run("sync"); s.finish_run(r1, ok=False, summary="crashed")
+    r2 = s.start_run("sync"); s.finish_run(r2, ok=True, summary="added 1")
+    s.start_run("sync")  # in progress, not finished: ignored
+    finished_at, ok = s.last_run("sync")
+    assert ok is True and finished_at.tzinfo is not None

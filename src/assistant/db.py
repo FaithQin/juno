@@ -217,6 +217,12 @@ class Store:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def last_run(self, job: str) -> tuple[datetime, bool] | None:
+        r = self.conn.execute(
+            "SELECT finished_at, ok FROM runs WHERE job=? AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1", (job,)
+        ).fetchone()
+        return (datetime.fromisoformat(r["finished_at"]), bool(r["ok"])) if r else None
+
     def finish_run(self, run_id: int, ok: bool, summary: str) -> None:
         self.conn.execute(
             "UPDATE runs SET finished_at=?, ok=?, summary=? WHERE id=?",

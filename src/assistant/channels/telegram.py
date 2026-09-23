@@ -51,13 +51,16 @@ def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
 class TelegramChannel:
     bubble_delay = 0.6   # seconds between bubbles, so several messages read like typing, not a burst
 
-    def __init__(self, token: str, allowed_chat_ids: set[int], on_message: Callable[[str], Awaitable[str]]):
+    def __init__(self, token: str, allowed_chat_ids: set[int], on_message: Callable[[str], Awaitable[str]],
+                 status: Callable[[], str] | None = None):
         self.allowed_chat_ids = set(allowed_chat_ids)
         self.on_message = on_message
+        self.status = status
         self.ignored: list[int] = []
         self.app = Application.builder().token(token).build()
         self.bot = self.app.bot
         self.app.add_handler(CommandHandler("start", self._on_start))
+        self.app.add_handler(CommandHandler("status", self._on_status))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_text))
 
     # -- inbound -------------------------------------------------------------
@@ -72,6 +75,13 @@ class TelegramChannel:
             await update.message.reply_text("hey. i'm here.")
         else:
             self.ignored.append(chat_id)
+
+    async def _on_status(self, update, context) -> None:
+        chat_id = update.effective_chat.id
+        if chat_id not in self.allowed_chat_ids:
+            self.ignored.append(chat_id)
+            return
+        await update.message.reply_text(self.status() if self.status else "no status available")
 
     async def _on_text(self, update, context) -> None:
         chat_id = update.effective_chat.id

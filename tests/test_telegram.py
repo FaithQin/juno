@@ -123,3 +123,14 @@ def test_bubbles_helper():
     assert bubbles("a\n\n\n  b  \n\nc") == ["a", "b", "c"]
     assert bubbles("single\nline list") == ["single\nline list"]
     assert bubbles("   ") == []
+
+
+async def test_status_command_answers_allowed_chat_only():
+    ch = make_channel([42])
+    ch.status = lambda: "running on juno-droplet (docker) since wed 10:45am"
+    update, msg = update_for(42, "/status")
+    await ch._on_status(update, None)
+    assert msg.replies == ["running on juno-droplet (docker) since wed 10:45am"]
+    update, msg = update_for(999, "/status")
+    await ch._on_status(update, None)
+    assert msg.replies == [] and ch.ignored == [999]
