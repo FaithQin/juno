@@ -97,3 +97,13 @@ Secrets in `.env` with 600 permissions, never committed. Daily token budget once
 | Replies | ~~one message per reply~~ → changed 2026-09-23: **Poke-style bubbles**. juno writes short messages separated by blank lines; the channel sends each as its own text with a typing pause |
 | Phase 1 real run | done 2026-09-22: 52 hand-made tasks adopted, 1 task added |
 | Brief task lists | **every dated task in Todoist** (not just school or p1/p2); overdue shows the **last 7 days** only |
+
+## Phase 2.5 decisions (2026-09-23)
+
+| Decision | Choice |
+|---|---|
+| Opening links | **`read_link` tool**: public pages as readable text; Canvas links via the API with her token. Content is framed as untrusted data; private/local addresses are refused |
+| Web search | **OpenAI native web search** (Responses API), Stanford as the user location, low context size; `agent.web_search` in assistant.yaml. No per-call cap on OpenAI, so the per-message request limit (8) is the ceiling |
+| Autonomy for reading | juno opens links found in messages and tasks **without asking**; reading never changes anything |
+| Full browser (Playwright) | **next phase, soon**: behind-login sites (Gradescope, Paperless, SSO forms) and form filling |
+| Hosting order | finish web tools → **VPS deploy next**, so juno answers while the Mac is closed |

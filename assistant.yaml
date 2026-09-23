@@ -4,6 +4,7 @@ agent:
   name: juno
   chat_model: "openai:gpt-6-sol"        # what answers your texts
   background_model: "openai:gpt-6-luna"  # cheap model for later background jobs (unused in phase 2)
+  web_search: true                       # let juno search the web (OpenAI native, ~$0.01 per search)
 
 brief:
   time: "07:00"                          # every day, in TIMEZONE

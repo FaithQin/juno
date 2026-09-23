@@ -23,6 +23,7 @@ from .db import Store
 from .gcal import GoogleCalendar
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
 from .todoist_client import TodoistClient
+from .web import WebReader
 
 log = logging.getLogger(__name__)
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
@@ -70,8 +71,10 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
         store=store, todoist=todoist, calendar=calendar, tz=settings.tz,
         courses=[c.code for c in courses_cfg.courses], sections=sections,
         classes_project_id=project.id, calendar_names=app_cfg.brief.calendars, now=now_utc,
+        web=WebReader(canvas_url=settings.canvas_url, canvas_token=settings.canvas_token),
     )
-    agent = build_agent(app_cfg.agent.chat_model, persona=load_persona)   # loader: persona.md is re-read per message
+    agent = build_agent(app_cfg.agent.chat_model, persona=load_persona,   # loader: persona.md is re-read per message
+                        web_search=app_cfg.agent.web_search)
     session = ChatSession(agent, ops, store, conversation_id=conversation_id)
     return Runtime(settings, app_cfg, courses_cfg, store, todoist, calendar, ops, session)
 

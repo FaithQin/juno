@@ -100,6 +100,7 @@ class AgentConfig(BaseModel):
     name: str = "juno"
     chat_model: str = "openai:gpt-6-sol"
     background_model: str = "openai:gpt-6-luna"
+    web_search: bool = True                 # provider-native web search (OpenAI: ~$0.01/search)
 
 
 class BriefConfig(BaseModel):

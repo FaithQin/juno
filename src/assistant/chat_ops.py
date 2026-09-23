@@ -30,7 +30,8 @@ DUE_ERROR = "error: due must be an ISO date (2026-09-28) or datetime (2026-09-28
 class ChatOps:
     def __init__(self, *, store: Store, todoist, calendar, tz: ZoneInfo, courses: list[str],
                  sections: dict[str, str], classes_project_id: str, calendar_names: list[str],
-                 now: Callable[[], datetime]):
+                 now: Callable[[], datetime], web=None):
+        self.web = web                        # WebReader, or None when links can't be opened
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -314,6 +315,11 @@ class ChatOps:
             return f"can't undo a {a.kind}"
         self.store.mark_undone(a.id)
         return msg
+
+    def read_link(self, url: str) -> str:
+        if self.web is None:
+            return "i can't open links right now"
+        return self.web.read(url)
 
     # ----------------------------------------------------------------------
     # what the model sees every turn (dynamic instructions)
