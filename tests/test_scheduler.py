@@ -1,0 +1,25 @@
+"""The scheduler registers exactly the three jobs, at the configured times."""
+
+from zoneinfo import ZoneInfo
+
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+
+from assistant.config import AppConfig
+from assistant.scheduler import build_scheduler
+
+
+async def noop():
+    return None
+
+
+def test_build_scheduler_registers_sync_nudges_and_brief():
+    cfg = AppConfig.model_validate({"brief": {"time": "07:00"}, "nudges": {"scan_minutes": 10}, "sync": {"every_minutes": 60}})
+    sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop)
+    jobs = {j.id: j for j in sched.get_jobs()}
+    assert set(jobs) == {"sync", "nudges", "brief"}
+    assert isinstance(jobs["sync"].trigger, IntervalTrigger) and jobs["sync"].trigger.interval.total_seconds() == 3600
+    assert isinstance(jobs["nudges"].trigger, IntervalTrigger) and jobs["nudges"].trigger.interval.total_seconds() == 600
+    assert isinstance(jobs["brief"].trigger, CronTrigger)
+    assert "hour='7'" in str(jobs["brief"].trigger) and "minute='0'" in str(jobs["brief"].trigger)
+    # coalesce / max_instances come from job_defaults and are applied when the scheduler starts

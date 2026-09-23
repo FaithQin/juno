@@ -1,0 +1,21 @@
+# Non-secret settings for juno. Secrets live in .env.
+
+agent:
+  name: juno
+  chat_model: "openai:gpt-6-sol"        # what answers your texts
+  background_model: "openai:gpt-6-luna"  # cheap model for later background jobs (unused in phase 2)
+
+brief:
+  time: "07:00"                          # every day, in TIMEZONE
+  calendars:                             # Google Calendar names, exactly as they appear in the sidebar
+    - Stanford
+    - TA
+    - faithclairvoyant333@gmail.com
+    - StartX
+    - Cal.com
+
+nudges:
+  scan_minutes: 10                       # how often to look for nudges to send
+
+sync:
+  every_minutes: 60                      # Canvas → Todoist
