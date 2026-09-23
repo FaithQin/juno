@@ -1,0 +1,18 @@
+services:
+  juno:
+    build: .
+    container_name: juno
+    restart: unless-stopped          # survives crashes and server reboots
+    env_file: .env
+    environment:
+      ASSISTANT_HOME: /app
+    volumes:
+      - ./data:/app/data                       # sqlite db + google token: the server's state
+      - ./persona.md:/app/persona.md:ro        # edit on the server (or redeploy) without a rebuild
+      - ./assistant.yaml:/app/assistant.yaml:ro
+      - ./courses.yaml:/app/courses.yaml:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

@@ -87,6 +87,7 @@ dependencies = [
     { name = "python-telegram-bot" },
     { name = "pyyaml" },
     { name = "todoist-api-python" },
+    { name = "tzdata" },
 ]
 
 [package.dev-dependencies]
@@ -107,6 +108,7 @@ requires-dist = [
     { name = "python-telegram-bot", specifier = ">=22.8" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "todoist-api-python", specifier = ">=4.0" },
+    { name = "tzdata", specifier = ">=2026.4" },
 ]
 
 [package.metadata.requires-dev]

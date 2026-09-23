@@ -1,0 +1,11 @@
+.venv
+.git
+.env
+data
+tests
+docs
+__pycache__
+.pytest_cache
+.DS_Store
+RESEARCH.md
+DECISIONS.md

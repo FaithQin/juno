@@ -79,7 +79,19 @@ uv run assistant nudges                # what would fire right now
 uv run assistant check                 # Todoist connection and sections
 ```
 
-Until the VPS (phase 7), `run` only works while this Mac is awake. Nudges missed while asleep are sent late with an honest note, never dropped.
+On the Mac, `run` only works while it's awake. For always-on, deploy to the server (below).
+
+## Deploy (always-on, $6/mo DigitalOcean droplet)
+
+One-time: create an Ubuntu 24.04 droplet with your SSH key, then on the server
+`bash server-setup.sh` (copy it over with `scp scripts/server-setup.sh root@IP:`).
+Every time after that, from the Mac:
+
+```bash
+scripts/deploy.sh root@IP
+```
+
+Details, the one-instance rule, and how to move hosts: `docs/03-deploy.md`.
 
 ## Layout
 
@@ -113,10 +125,12 @@ tests/                  fakes for everything; no network
 ## Phases
 
 1. Canvas → Todoist sync ✅
-2. Telegram chat, add-task-by-text, nudges, morning brief, facts memory, undo ✅ (needs your OpenAI + Telegram + Google setup to go live)
+2. Telegram chat, add-task-by-text, nudges, morning brief, facts memory, undo ✅ live
+2.5. read_link and web search ✅ live
 3. Canvas calendar events → Google Calendar; CS 106B site scrape
 4. Syllabus parsing with approval
 5. OwnTracks location, running-late alerts
 6. Gradescope scraper (if email + password login works)
-7. Deploy: Docker on a VPS
-8. iMessage channel via Photon (needs a Node sidecar or a Python send path)
+7. Deploy: Docker on a DigitalOcean droplet ✅ (files ready; see docs/03-deploy.md)
+8. Full browser (Playwright) for behind-login sites and forms
+9. iMessage channel via Photon (needs a Node sidecar or a Python send path)

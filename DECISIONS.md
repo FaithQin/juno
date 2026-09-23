@@ -107,3 +107,5 @@ Secrets in `.env` with 600 permissions, never committed. Daily token budget once
 | Autonomy for reading | juno opens links found in messages and tasks **without asking**; reading never changes anything |
 | Full browser (Playwright) | **next phase, soon**: behind-login sites (Gradescope, Paperless, SSO forms) and form filling |
 | Hosting order | finish web tools → **VPS deploy next**, so juno answers while the Mac is closed |
+| Host | **DigitalOcean** first ($6 droplet, SFO); move to Hetzner when it runs out of room. Docker so the move is one command |
+| Deploy flow | rsync from the Mac (`scripts/deploy.sh`), including `.env`; `data/` copied only on the first deploy; one juno instance at a time |
