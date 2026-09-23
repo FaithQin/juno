@@ -1,0 +1,22 @@
+# Which Canvas courses to sync, and which Todoist section each one lands in.
+# Section names default to the course code. Run `uv run assistant courses`
+# to list your active Canvas courses with their ids.
+
+todoist:
+  project_id: "6cXPJPmRH6GF2MPr"   # "Classes", under Areas
+  project_name: "Classes"
+
+courses:
+  - code: "ENGR 40M"
+    canvas_id: 231533
+  - code: "CME 102"
+    canvas_id: 232579
+  - code: "MATSCI 88Q"
+    canvas_id: 232193
+  - code: "EE 310"
+    canvas_id: 230601
+  - code: "EE 100"
+    canvas_id: 232825
+  - code: "CS 106B"
+    canvas_id: null          # not on Canvas; assignments come from the course site (phase 2)
+    website: "https://web.stanford.edu/class/cs106b/"
