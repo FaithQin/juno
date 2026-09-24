@@ -574,37 +574,26 @@ def format_report(r: Report) -> str:
 # orchestration
 # --------------------------------------------------------------------------
 
-def reconcile_tasks(active, tasks: dict[str, TaskRow], links: dict[tuple[str, int], ItemLink], store: Store, *,
-                    dry_run: bool) -> None:
+def reconcile_tasks(active, tasks: dict[str, TaskRow], store: Store, *, dry_run: bool) -> None:
     """Bring the remembered task rows in line with what is active in the class projects.
 
-    `active` must be the union of Classes and every course sub-project: a task the orchestrator
-    moved between them is the same task (same id), still open. Three rules:
+    `active` must be the union of Classes and every course sub-project: a task moved between
+    them keeps its id, so it is the same task, still open. Two rules, unchanged from before
+    sub-projects:
       * new active task → remember it, open;
       * remembered open task no longer active anywhere we read → completed or deleted in
-        Todoist; either way, leave it be;
-      * remembered *completed* task that is active again → open again (heals a row that a
-        read which missed it wrongly closed), unless every Canvas item linked to it is already
-        recorded submitted: that is a task the sync ticked and Faith reopened on purpose, and
-        re-opening the row would make the next sync tick it again.
+        Todoist; either way, leave it be.
+    A completed row stays completed even if the task shows up active again: that is Faith
+    reopening it on purpose, and re-opening the row would make the next sync tick it again.
+    (A read that misses a project can't wrongly close rows: `tasks_in` raises instead.)
     """
-    submitted: dict[str, list[bool]] = defaultdict(list)
-    for link in links.values():
-        submitted[link.task_id].append(link.submitted)
-
     active_ids = {t.id for t in active}
     for t in active:
-        row = tasks.get(t.id)
-        if row is None:
+        if t.id not in tasks:
             tasks[t.id] = TaskRow(t.id, None, False, t.content, t.description, _task_due_iso(t), False)
             if not dry_run:
                 store.upsert_task(t.id, batch_key=None, managed=False, content=t.content,
                                   description=t.description, due_at=_task_due_iso(t), completed=False)
-        elif row.completed and not (submitted.get(t.id) and all(submitted[t.id])):
-            row.completed = False
-            if not dry_run:
-                store.upsert_task(t.id, batch_key=None, managed=row.managed, content=row.content,
-                                  description=row.description, due_at=row.due_at, completed=False)
     for tid, row in tasks.items():
         if tid not in active_ids and not row.completed:
             row.completed = True  # completed or deleted in Todoist; either way, leave it be
@@ -650,7 +639,7 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
             if not dry_run:
                 store.link(link.kind, link.canvas_id, link.course_id, link.task_id, adopted=True,
                            name=link.name, due_at=link.due_at, submitted=link.submitted)
-        reconcile_tasks(active, tasks, links, store, dry_run=dry_run)
+        reconcile_tasks(active, tasks, store, dry_run=dry_run)
 
         plan = plan_sync(
             items, by_id, links, tasks, tz=settings.tz,

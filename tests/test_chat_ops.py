@@ -389,3 +389,33 @@ def test_undo_of_a_delete_restores_into_the_sub_project(tmp_path):
     ops.undo()
     (t,) = [t for t in todoist.all_tasks() if t.content == "ENGR 40M: Sign up for a lab section"]
     assert (t.project_id, t.section_id) == ("P-ENGR", None)
+
+
+def test_undo_of_a_delete_made_before_the_move_restores_into_the_course_sub_project(tmp_path):
+    """Review finding: the snapshot names ENGR 40M's old section (S1), which is deleted after the
+    migration. Restoring there would fail; the course has a sub-project now, so restore into it."""
+    ops, store, todoist = make_project_ops(tmp_path)
+    snapshot = {"content": "ENGR 40M: PSET 1", "description": "", "project_id": "CLASSES", "section_id": "S1",
+                "priority": 1, "due": None, "due_kind": None}
+    store.log_action("delete_task", {"task_id": "OLD", "content": "ENGR 40M: PSET 1", "snapshot": snapshot}, at=NOW)
+    assert ops.undo() == "undone: ENGR 40M: PSET 1 is back"
+    (t,) = todoist.all_tasks()
+    assert (t.project_id, t.section_id) == ("P-ENGR", None)
+
+
+class OneBrokenProject(FakeTodoist):
+    """A sub-project that can't be read (archived, deleted, a bad id in courses.yaml)."""
+
+    def tasks(self, project_id):
+        if project_id == "P-CS":
+            raise RuntimeError("404 project not found")
+        return super().tasks(project_id)
+
+
+def test_one_unreadable_sub_project_does_not_break_chat_or_nudges_for_every_class(tmp_path):
+    """Review finding: chat reads (and the 10-minute nudges) skip a project they can't read;
+    only the syncs stay strict, where skipping would make its tasks look completed."""
+    ops, store, _ = make_project_ops(tmp_path)
+    ops.todoist = OneBrokenProject(deepcopy(MIXED))
+    got = {d.content for d in ops.due_tasks()}
+    assert "ENGR 40M: Sign up for a lab section" in got and "Assignment 1 (Paperless)" not in got

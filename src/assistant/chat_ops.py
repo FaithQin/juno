@@ -102,7 +102,7 @@ class ChatOps:
     def _candidates(self) -> list:
         seen: set[str] = set()
         out = []
-        for t in list(self.todoist.tasks_in(self.class_project_ids)) + list(self.todoist.priority_tasks(MIN_PRIORITY_ELSEWHERE)):
+        for t in list(self.todoist.tasks_in(self.class_project_ids, strict=False)) + list(self.todoist.priority_tasks(MIN_PRIORITY_ELSEWHERE)):
             if t.id in seen:
                 continue
             seen.add(t.id)
@@ -385,8 +385,12 @@ class ChatOps:
                     due_at = due_at if due_at.tzinfo else due_at.replace(tzinfo=self.tz)
                 else:
                     due_date = date.fromisoformat(snap["due"])
-            self.todoist.add_task(content=snap["content"], description=snap["description"], project_id=snap["project_id"],
-                                  section_id=snap["section_id"], due_at=due_at, due_date=due_date, priority=snap["priority"])
+            project_id, section_id = snap["project_id"], snap["section_id"]
+            code = self.course_by_section.get(section_id)
+            if code in self.project_by_course:       # deleted before its course moved to a sub-project
+                project_id, section_id = self.project_by_course[code], None
+            self.todoist.add_task(content=snap["content"], description=snap["description"], project_id=project_id,
+                                  section_id=section_id, due_at=due_at, due_date=due_date, priority=snap["priority"])
             msg = f"undone: {snap['content']} is back"
         elif a.kind == "remember":
             self.store.forget(p["fact_id"])

@@ -7,10 +7,14 @@ your account's timezone.
 
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime, timezone
 
 from todoist_api_python.api import TodoistAPI
 from todoist_api_python.models import Project, Section, Task
+
+log = logging.getLogger(__name__)
 
 
 def _flatten(pages):
@@ -36,7 +40,7 @@ class TodoistClient:
         return matches[0]
 
     def projects(self) -> list[Project]:
-        """Every project in the account (each has `parent_id`), for `check` and startup validation."""
+        """Every project in the account (each has `parent_id`), for `assistant check`."""
         return _flatten(self.api.get_projects())
 
     def sections(self, project_id: str) -> dict[str, Section]:
@@ -54,18 +58,28 @@ class TodoistClient:
         """All *active* tasks in the project (completed ones are not returned)."""
         return _flatten(self.api.get_tasks(project_id=project_id))
 
-    def tasks_in(self, project_ids: list[str]) -> list[Task]:
+    def tasks_in(self, project_ids: list[str], *, strict: bool = True) -> list[Task]:
         """Active tasks across several projects (Classes plus each course sub-project), each once.
 
         One read per project, in the order given. With the parent first, a task moved from
         Classes into a sub-project while this runs is seen in one place or both, never neither;
-        both is folded by id. A project that can't be read raises: skipping it would make every
-        task in it look completed to the sync.
+        both is folded by id. `strict` (the syncs): a project that can't be read raises, because
+        skipping it would make every task in it look completed. `strict=False` (chat, nudges):
+        skip a *sub-project* that fails with a warning, so one archived or mistyped sub-project
+        doesn't silence every class; the parent (first id) failing still raises, because that is
+        Todoist being down and the nudges and brief need to see it and retry.
         """
         seen: set[str] = set()
         out: list[Task] = []
-        for pid in dict.fromkeys(project_ids):
-            for t in self.tasks(pid):
+        for i, pid in enumerate(dict.fromkeys(project_ids)):
+            try:
+                got = self.tasks(pid)
+            except Exception:
+                if strict or i == 0:          # the parent failing is Todoist being down: always raise
+                    raise
+                log.warning("todoist: couldn't read project %s; skipping it (check courses.yaml)", pid, exc_info=True)
+                continue
+            for t in got:
                 if t.id not in seen:
                     seen.add(t.id)
                     out.append(t)

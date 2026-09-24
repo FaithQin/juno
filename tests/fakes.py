@@ -63,12 +63,18 @@ class FakeTodoist:
     def tasks(self, project_id: str) -> list[FakeTask]:
         return [t for t in self._tasks.values() if t.project_id == project_id and not t.is_completed]
 
-    def tasks_in(self, project_ids: list[str]) -> list[FakeTask]:
+    def tasks_in(self, project_ids: list[str], *, strict: bool = True) -> list[FakeTask]:
         """Same contract as TodoistClient.tasks_in; goes through self.tasks so tests can make it fail."""
         seen: set[str] = set()
         out = []
-        for pid in dict.fromkeys(project_ids):
-            for t in self.tasks(pid):
+        for i, pid in enumerate(dict.fromkeys(project_ids)):
+            try:
+                got = self.tasks(pid)
+            except Exception:
+                if strict or i == 0:          # the parent failing is Todoist being down: always raise
+                    raise
+                continue
+            for t in got:
                 if t.id not in seen:
                     seen.add(t.id)
                     out.append(t)

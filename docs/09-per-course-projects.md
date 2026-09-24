@@ -30,19 +30,26 @@ the sync remembers tasks **by id**, and treats a remembered task that is no long
 completed. If juno read only Classes, moving a task into a sub-project would look like completing
 it. Todoist keeps a task's id when it moves, so reading the union makes a move invisible.
 
-Two guards:
+Guards:
 - **Parent first.** A task moved from Classes to a sub-project *while* juno reads is seen in one
   place or both (folded by id), never neither.
-- **Healing.** If a read ever did miss a task and closed its row, the row re-opens the next time the
-  task shows up active, unless juno itself ticked it (every linked item submitted) and Faith
-  reopened it on purpose (`sync.reconcile_tasks`).
+- **Strict for the syncs.** If a project can't be read, the sync raises instead of carrying on:
+  skipping it would make every task in it look completed.
+- **Lenient for chat and nudges.** They skip a sub-project that can't be read (logged), so one
+  archived or mistyped sub-project doesn't silence every class. The parent failing still raises:
+  that is Todoist being down, and the nudges and brief wait and retry.
+- **Completed stays completed.** A row juno remembers as done stays done even if the task shows up
+  open again: that is Faith reopening it. (An earlier draft re-opened such rows to heal a missed
+  read; review showed it would re-tick tasks she reopened on purpose, so it was dropped. Deploying
+  before the move is what prevents missed reads.)
 
 ## Writing: only creates choose a place
 
 New Canvas/Gradescope items and chat-added course tasks go into the course's sub-project with no
 section (`sync._destination`, `ChatOps.add_task`). Updates (due date, completion, progress) address
 tasks by id and never send a project or section, so juno never moves a task back. Undo restores a
-deleted task where it was.
+deleted task where it was, or into its course's sub-project if it was deleted from an old section
+that has since been removed.
 
 ## Attributing a task to a course
 

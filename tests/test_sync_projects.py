@@ -155,27 +155,6 @@ def test_a_task_moved_into_its_sub_project_stays_active_and_is_still_ticked_on_s
     assert [t.id for t in todoist.all_tasks()] == [] and len(store.tasks()) == 1    # never duplicated
 
 
-def test_a_row_wrongly_marked_completed_heals_when_the_task_shows_up_active(tmp_path):
-    store = Store(tmp_path / "t.sqlite3")
-    t1 = FakeTask("T1", "EE 100: Lab 1", FakeDue(FRI), project_id="P-EE")
-    link(store, 1, "T1", name="Lab 1")
-    remember(store, "T1", t1.content, completed=True)          # poisoned by an old Classes-only run
-    todoist = FakeTodoist([t1])
-    report, store = sync(tmp_path, PROJECT_CFG, todoist, [item(1, "Lab 1", submitted=True)])
-    assert report.completed == ["EE 100: Lab 1"] and todoist.get_task("T1").is_completed
-
-
-def test_dry_run_heals_in_memory_only(tmp_path):
-    store = Store(tmp_path / "t.sqlite3")
-    t1 = FakeTask("T1", "EE 100: Lab 1", FakeDue(FRI), project_id="P-EE")
-    link(store, 1, "T1", name="Lab 1")
-    remember(store, "T1", t1.content, completed=True)
-    todoist = FakeTodoist([t1])
-    report, store = sync(tmp_path, PROJECT_CFG, todoist, [item(1, "Lab 1", submitted=True)], dry_run=True)
-    assert report.completed == ["EE 100: Lab 1"]                # what a real run would do
-    assert store.tasks()["T1"].completed is True and not todoist.get_task("T1").is_completed
-
-
 def test_a_hand_made_linked_task_in_a_sub_project_is_adopted_not_duplicated(tmp_path):
     form = FakeTask("T9", "EE 100: Form", FakeDue(FRI), project_id="P-EE",
                     description="https://canvas.stanford.edu/courses/232825/assignments/1")
@@ -238,3 +217,19 @@ def test_verbose_names_the_parent_and_the_sub_projects_read(tmp_path, capsys):
     todoist = FakeTodoist([FakeTask("TG", "Add/drop deadline")])
     sync(tmp_path, PROJECT_CFG, todoist, [], verbose=True)
     assert "todoist: 'Classes' (CLASSES) + 2 course sub-projects, 0 legacy sections, 1 active tasks" in capsys.readouterr().out
+
+
+def test_a_reopened_task_with_mixed_links_is_not_ticked_again(tmp_path):
+    """Review finding (2026-09-24): a task linked to a submitted Canvas item *and* an unsubmitted
+    Gradescope item, ticked by juno, then reopened by Faith. Main keeps completed rows completed;
+    re-opening the row here would make the next sync tick it again, every time she reopens it."""
+    store = Store(tmp_path / "t.sqlite3")
+    t1 = FakeTask("T1", "EE 100: Lab 1", FakeDue(FRI), project_id="P-EE")          # she reopened it
+    store.link("assignment", 1, 232825, "T1", adopted=False, name="Lab 1",
+               due_at=FRI.isoformat(timespec="seconds"), submitted=True)
+    store.link("gradescope", 77, 999, "T1", adopted=True, name="Lab 1", due_at=None, submitted=False)
+    remember(store, "T1", t1.content, completed=True)
+    todoist = FakeTodoist([t1])
+    report, store = sync(tmp_path, PROJECT_CFG, todoist, [item(1, "Lab 1", submitted=True)])
+    assert report.completed == [] and not todoist.get_task("T1").is_completed
+    assert store.tasks()["T1"].completed is True

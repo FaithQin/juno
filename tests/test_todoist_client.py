@@ -79,3 +79,38 @@ def test_update_can_never_move_a_task():
         params = _params(cls.update_task)
         assert "project_id" not in params and "section_id" not in params
     assert not hasattr(TodoistClient, "move_task")      # moves are the orchestrator's job, never juno's
+
+
+def test_tasks_in_is_strict_by_default_and_can_skip_an_unreadable_project():
+    api = StubAPI([FakeTask("T1", "general"), FakeTask("T2", "lab", project_id="P-EE")])
+    real = api.get_tasks
+
+    def get_tasks(project_id=None):
+        if project_id == "P-GONE":
+            raise RuntimeError("404")
+        return real(project_id)
+    api.get_tasks = get_tasks
+    import pytest
+    with pytest.raises(RuntimeError):
+        client(api).tasks_in(["CLASSES", "P-GONE", "P-EE"])                       # syncs: never skip
+    assert [t.id for t in client(api).tasks_in(["CLASSES", "P-GONE", "P-EE"], strict=False)] == ["T1", "T2"]
+
+
+def test_fake_tasks_in_takes_the_same_arguments_as_the_real_one():
+    assert _params(FakeTodoist.tasks_in) == _params(TodoistClient.tasks_in)
+
+
+def test_lenient_tasks_in_still_raises_when_the_parent_cant_be_read():
+    """A failing Classes read is Todoist being down, not one bad sub-project: the nudges and the
+    brief must see the outage (they wait and retry) instead of an empty list."""
+    api = StubAPI([FakeTask("T2", "lab", project_id="P-EE")])
+    real = api.get_tasks
+
+    def get_tasks(project_id=None):
+        if project_id == "CLASSES":
+            raise RuntimeError("503")
+        return real(project_id)
+    api.get_tasks = get_tasks
+    import pytest
+    with pytest.raises(RuntimeError):
+        client(api).tasks_in(["CLASSES", "P-EE"], strict=False)
