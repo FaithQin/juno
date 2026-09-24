@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-09-24 (evening, Pacific)
+# Handoff — state as of 2026-09-24 (late evening, Pacific)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
@@ -11,7 +11,8 @@ what to do next. **Update it at the end of every working session.**
 | Canvas events → Stanford calendar | hourly | first run **proposal pending in Telegram** (see below) |
 | Nudges: 8pm the evening before, 2h before | scan every 10 min | late ones say "i was offline" |
 | Morning brief | 07:00 daily | every dated Todoist task + calendars Stanford/TA/primary/StartX/Cal.com |
-| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, undo, `/status` |
+| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, `/status` |
+| Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line (first one marked 2026-09-24: "3. Current + KCL") |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198), ed, canvas; `browser_submit` asks first |
 
 ## Pending right now
@@ -30,6 +31,10 @@ what to do next. **Update it at the end of every working session.**
   token + chat id. Google OAuth client at `data/google_credentials.json`, token at `data/google_token.json`
   (scopes: calendar read + events write). Ed uses the session token inside `data/browser/ed.json`.
 - Accounts: OpenAI on Faith's personal account (not Stanford Edu). GitHub `FaithQin/juno`, private.
+
+## Standing rules added today
+- **Every edit is reported.** Chat writes echo; scheduled and manual syncs text. `assistant sync` texts unless `--quiet`.
+- **Session end:** update this file, add a `CHANGELOG.md` line, push (see `AGENTS.md`).
 
 ## Known warts
 - One-shot `assistant chat` *inside the container* prints a harmless "Event loop is closed" notice

@@ -36,6 +36,8 @@ class ChatOps:
         self.web = web                        # WebReader, or None when links can't be opened
         self.browser = browser                # BrowserSession, or None when there is no browser
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
+        self.sync_canvas = None               # () -> Report, wired by app.py
+        self.sync_gradescope = None           # () -> str | None, wired by app.py (runs the async job on the main loop)
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -492,6 +494,28 @@ class ChatOps:
         self.todoist.delete_task(t.id)
         self.store.log_action("delete_task", {"task_id": t.id, "content": t.content, "snapshot": snapshot}, at=self.now())
         return f"deleted: {t.content}"
+
+    def sync_now(self, source: str = "all") -> str:
+        """Run the Canvas and/or Gradescope sync immediately and return what changed."""
+        from .sync import format_report
+
+        if self.sync_canvas is None and self.sync_gradescope is None:
+            return "syncs aren't wired up in this context"
+        parts: list[str] = []
+        if source in ("all", "canvas") and self.sync_canvas is not None:
+            try:
+                report = self.sync_canvas()
+                body = "\n".join(format_report(report).splitlines()[1:]) or "nothing to change"
+                parts.append(f"canvas: {body}")
+            except Exception as e:
+                parts.append(f"canvas: sync failed ({type(e).__name__})")
+        if source in ("all", "gradescope") and self.sync_gradescope is not None:
+            try:
+                text = self.sync_gradescope()
+                parts.append(text or "gradescope: nothing new")
+            except Exception as e:
+                parts.append(f"gradescope: sync failed ({type(e).__name__})")
+        return "\n\n".join(parts) if parts else "nothing to sync for that source"
 
     def ed_announcements(self, course: str, limit: int = 5) -> str:
         from .ed import format_announcements, match_course

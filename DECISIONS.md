@@ -144,3 +144,11 @@ Secrets in `.env` with 600 permissions, never committed. Daily token budget once
 | First calendar run | **propose over Telegram, wait for yes** (matches by same day + within an hour + course code or shared title word) |
 | Chat calendar tools | add / move / delete events with undo; new events go to Stanford (classes, exams), TA (office hours), or personal, per the persona |
 | Cadence | hourly, via the Canvas API (no browser) |
+
+## Phase 6 decisions (2026-09-24, late): completions
+
+| Decision | Choice |
+|---|---|
+| Completed work | syncs tick the Todoist task when Canvas/Gradescope show a submission (already true); **quizzes finished inside a batch get a ✅ on their checklist line** and a "progress" note |
+| On demand | `sync_now` tool: "i finished quiz 3" → juno checks Canvas/Gradescope right then and reports |
+| Every edit is reported | **standing rule**: any write by juno or a sync (add, complete, move, edit, link, delete) is echoed in chat or texted by the sync. No silent changes |

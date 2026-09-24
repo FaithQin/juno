@@ -183,6 +183,11 @@ async def serve(rt: Runtime) -> None:
         except Exception:
             log.exception("gradescope sync failed")
 
+    # on-demand syncs from chat (sync tools run on worker threads, so hop back onto this loop)
+    loop = asyncio.get_running_loop()
+    rt.ops.sync_canvas = lambda: run_sync(rt.settings, rt.courses_cfg)
+    rt.ops.sync_gradescope = lambda: asyncio.run_coroutine_threadsafe(gradescope.run(quiet=True), loop).result(timeout=300)
+
     calendar_sync = build_calendar_sync(rt, channel.send)
     rt.session.job_handlers[CALENDAR_JOB] = calendar_sync.approve
 

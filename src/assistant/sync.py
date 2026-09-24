@@ -180,6 +180,17 @@ class Complete:
 
 
 @dataclass
+class Progress:
+    """Some, not all, members of a batch task are now submitted: tick them inside the description."""
+    task_id: str
+    items: list[CanvasItem]          # every member
+    course: Course
+    done: int
+    total: int
+    newly_done: list[CanvasItem]
+
+
+@dataclass
 class Skip:
     item: CanvasItem
     reason: str
@@ -191,12 +202,13 @@ class Plan:
     joins: list[Join] = field(default_factory=list)
     due_updates: list[DueUpdate] = field(default_factory=list)
     completes: list[Complete] = field(default_factory=list)
+    progress: list[Progress] = field(default_factory=list)
     skips: list[Skip] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
-        return not (self.creates or self.joins or self.due_updates or self.completes)
+        return not (self.creates or self.joins or self.due_updates or self.completes or self.progress)
 
 
 def single_key(item: CanvasItem) -> str:
@@ -292,6 +304,11 @@ def plan_sync(
                 and not (task and task.completed)
             ):
                 plan.completes.append(Complete(task_id, members, course))
+            elif len(members) > 1:
+                newly = [m for m in linked if m.submitted and not links[m.key].submitted]
+                if newly:
+                    done = sum(1 for m in members if m.submitted)
+                    plan.progress.append(Progress(task_id, members, course, done, len(members), newly))
             continue
 
         # nothing linked yet
@@ -394,13 +411,14 @@ class Report:
     joined: list[str] = field(default_factory=list)
     due_updated: list[str] = field(default_factory=list)
     completed: list[str] = field(default_factory=list)
+    progress: list[str] = field(default_factory=list)
     skipped: Counter = field(default_factory=Counter)
     notes: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
-        return bool(self.created or self.joined or self.due_updated or self.completed)
+        return bool(self.created or self.joined or self.due_updated or self.completed or self.progress)
 
 
 def apply_plan(plan: Plan, *, todoist, store: Store, project_id: str, sections: dict, tz: ZoneInfo,
@@ -471,7 +489,42 @@ def apply_plan(plan: Plan, *, todoist, store: Store, project_id: str, sections: 
         except Exception as e:
             report.errors.append(f"complete failed: {label}: {e}")
 
+    for pr in plan.progress:
+        names = ", ".join(it.name for it in pr.newly_done)
+        try:
+            content = pr.task_id
+            if not dry_run:
+                current = todoist.get_task(pr.task_id)
+                content = current.content
+                desc = mark_done_lines(current.description or "", [it.html_url for it in pr.items if it.submitted])
+                if desc != (current.description or ""):
+                    todoist.update_task(pr.task_id, description=desc)
+                for it in pr.items:
+                    store.link(it.kind, it.canvas_id, it.course_id, pr.task_id, adopted=False,
+                               name=it.name, due_at=iso(it.due_at), submitted=it.submitted)
+            report.progress.append(f"{content}: {pr.done}/{pr.total} done ({names})")
+        except Exception as e:
+            report.errors.append(f"progress update failed: {pr.task_id}: {e}")
+
     return report
+
+
+DONE_MARK = "✅ "
+
+
+def mark_done_lines(description: str, done_urls: list[str]) -> str:
+    """Prefix the checklist line for each submitted item with ✅, leaving everything else untouched."""
+    out = []
+    for line in description.splitlines():
+        stripped = line.lstrip("-•* ").strip()
+        hit = any(url and url in line for url in done_urls)
+        if hit and not stripped.startswith(DONE_MARK):
+            indent = line[: len(line) - len(line.lstrip())]
+            bullet = "- " if line.lstrip().startswith(("-", "•", "*")) else ""
+            out.append(f"{indent}{bullet}{DONE_MARK}{stripped}")
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 def format_report(r: Report) -> str:
@@ -488,6 +541,9 @@ def format_report(r: Report) -> str:
     if r.completed:
         lines.append(f"completed {len(r.completed)} (submitted on Canvas):")
         lines += [f"  - {x}" for x in r.completed]
+    if r.progress:
+        lines.append(f"progress {len(r.progress)}:")
+        lines += [f"  - {x}" for x in r.progress]
     if not r.changed:
         lines.append("nothing to change")
     if r.skipped:

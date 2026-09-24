@@ -86,6 +86,17 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         return ctx.deps.read_link(url)
 
     @agent.tool
+    def sync_now(ctx: RunContext[ChatOps], source: Literal["all", "canvas", "gradescope"] = "all") -> str:
+        """Check Canvas and/or Gradescope right now and update Todoist: new assignments get tasks,
+        submitted ones get ticked, and quizzes finished inside a batch get a ✅ in the task. Use this
+        when Faith says she finished or submitted something, instead of completing the task by hand.
+
+        Args:
+            source: all (default), canvas, or gradescope.
+        """
+        return ctx.deps.sync_now(source)
+
+    @agent.tool
     def ed_announcements(ctx: RunContext[ChatOps], course: str, limit: int = 5) -> str:
         """Latest announcements and pinned posts from a course's Ed Discussion, with links.
         Much cheaper than browsing Ed; use this first for anything about announcements.

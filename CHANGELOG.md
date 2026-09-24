@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2026-09-24
+- Phase 6: completion tracking inside batch tasks (✅ per submitted quiz, "progress" notes), `sync_now` chat tool
+  ("i finished quiz 3" → check Canvas/Gradescope now), manual `assistant sync` texts its changes; standing rule that
+  every edit is reported. Cross-tool context files: AGENTS.md, HANDOFF.md, CHANGELOG.md.
 - Phase 5: Canvas events → Stanford calendar (first run proposes, matches hand-made events by day/time/course);
   chat tools add_event, move_event, delete_event, delete_task, all undoable.
 - Phase 4: Gradescope → Todoist sync via the saved browser login (first run proposed and approved);

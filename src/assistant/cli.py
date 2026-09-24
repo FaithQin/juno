@@ -64,13 +64,33 @@ def cmd_check(_args) -> int:
     return 0
 
 
+def telegram_notify(settings, text: str) -> bool:
+    """Send a text to Faith's allowlisted chats. Every edit juno makes must reach her, even from a manual run."""
+    import asyncio
+
+    if not settings.telegram_bot_token or not settings.allowed_chat_ids:
+        return False
+    from telegram import Bot
+
+    async def go():
+        async with Bot(settings.telegram_bot_token) as bot:
+            for chat_id in sorted(settings.allowed_chat_ids):
+                await bot.send_message(chat_id, text)
+
+    asyncio.run(go())
+    return True
+
+
 def cmd_sync(args) -> int:
     from .sync import format_report, run_sync
 
     settings = load_settings()
     cfg = load_courses()
     report = run_sync(settings, cfg, dry_run=args.dry_run, verbose=args.verbose)
-    print(format_report(report))
+    text = format_report(report)
+    print(text)
+    if not args.dry_run and not args.quiet and report.changed:
+        print("(texted)" if telegram_notify(settings, text) else "(no telegram configured; not texted)")
     return 1 if report.errors else 0
 
 
@@ -306,6 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     p_sync = sub.add_parser("sync", help="sync Canvas assignments into Todoist")
     p_sync.add_argument("--dry-run", action="store_true", help="show what would change; write nothing")
     p_sync.add_argument("-v", "--verbose", action="store_true")
+    p_sync.add_argument("--quiet", action="store_true", help="don't text Faith about changes made by this manual run")
 
     sub.add_parser("run", help="start juno: Telegram polling + hourly sync + nudges + morning brief")
     p_chat = sub.add_parser("chat", help="one message to juno from the terminal")

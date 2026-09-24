@@ -263,3 +263,25 @@ def test_delete_task_with_undo(tmp_path):
     back = next(t for t in todoist.tasks("CLASSES") if t.content.startswith("CS 106B: Assignment 1"))
     assert back.section_id == "S2" and back.due.date == datetime(2026, 10, 6, 6, 59, tzinfo=timezone.utc)
     assert ops.delete_task("engr 40m").startswith("which one?")
+
+
+def test_sync_now_runs_the_syncs_and_reports(tmp_path):
+    from assistant.sync import Report
+
+    ops, *_ = make_ops(tmp_path, SAMPLE)
+    assert ops.sync_now() == "syncs aren't wired up in this context"
+
+    def canvas():
+        r = Report(dry_run=False)
+        r.progress.append("ENGR 40M quizzes 2–8: 1/7 done (3. Current + KCL)")
+        return r
+
+    def gradescope():
+        return "gradescope sync\ncompleted 1 (submitted on Gradescope):\n  - CME 102: Pset1 (Gradescope)"
+
+    ops.sync_canvas = canvas
+    ops.sync_gradescope = gradescope
+    text = ops.sync_now("canvas")
+    assert text == "canvas: progress 1:\n  - ENGR 40M quizzes 2–8: 1/7 done (3. Current + KCL)"
+    text = ops.sync_now("all")
+    assert text.startswith("canvas: progress 1:") and "gradescope sync" in text

@@ -181,3 +181,51 @@ def test_adopt_by_title_matches_hand_made_gradescope_tasks():
     ]
     pairs = adopt_by_title(items, [t1, t2, t3], course_for={1359455: cme}, task_course={"T1": "CME 102", "T2": "CME 102", "T3": "MATSCI 88Q"})
     assert [(it.name, t.id) for it, t in pairs] == [("Pset1", "T1")]     # Pset2 has no counterpart; T2/T3 don't match
+
+
+# --- partial completion inside a batch (phase 6) ---------------------------------------
+
+def _linked_batch(submitted_flags, known_flags=None):
+    """Three quizzes in one task T1; `submitted_flags` is what Canvas says now, `known_flags` what we recorded last time."""
+    known_flags = known_flags or [False] * len(submitted_flags)
+    items = [item(i + 2, f"{i + 2}. Quiz {i + 2}", submitted=sub) for i, sub in enumerate(submitted_flags)]
+    links = {
+        it.key: ItemLink("assignment", it.canvas_id, 231533, "T1", False, it.name, "2026-09-26T06:59:00+00:00", known)
+        for it, known in zip(items, known_flags)
+    }
+    tasks = {"T1": TaskRow("T1", "batch:231533:2026-09-26T06:59:00+00:00:10", True, "ENGR 40M quizzes 2–4", "", None, False)}
+    return items, links, tasks
+
+
+def test_one_quiz_submitted_records_progress_but_does_not_complete_the_batch():
+    items, links, tasks = _linked_batch([False, True, False])
+    plan = plan_sync(items, COURSES, links, tasks, tz=TZ)
+    assert plan.completes == []
+    (pr,) = plan.progress
+    assert pr.task_id == "T1" and pr.done == 1 and pr.total == 3
+    assert [it.canvas_id for it in pr.newly_done] == [3]
+
+
+def test_progress_is_only_reported_when_something_new_was_submitted():
+    items, links, tasks = _linked_batch([False, True, False], known_flags=[False, True, False])
+    assert plan_sync(items, COURSES, links, tasks, tz=TZ).progress == []
+    items, links, tasks = _linked_batch([True, True, True])
+    plan = plan_sync(items, COURSES, links, tasks, tz=TZ)
+    assert plan.progress == [] and [c.task_id for c in plan.completes] == ["T1"]
+
+
+def test_apply_marks_done_quizzes_in_the_description():
+    from assistant.db import Store
+    from assistant.sync import apply_plan, format_report
+    from fakes import FakeTask, FakeTodoist
+
+    items, links, tasks = _linked_batch([False, True, False])
+    desc = "Canvas quizzes due Fri 11:59pm:\n" + "\n".join(f"- [{it.name}]({it.html_url})" for it in items)
+    todoist = FakeTodoist([FakeTask("T1", "ENGR 40M quizzes 2–4", None, 1, "S1", description=desc)])
+    plan = plan_sync(items, COURSES, links, tasks, tz=TZ)
+    report = apply_plan(plan, todoist=todoist, store=Store(__import__("tempfile").mkdtemp() and __import__("pathlib").Path(__import__("tempfile").mkdtemp()) / "t.sqlite3"),
+                        project_id="CLASSES", sections={}, tz=TZ, dry_run=False)
+    new_desc = todoist.get_task("T1").description
+    assert "- ✅ [3. Quiz 3](" in new_desc and "- [2. Quiz 2](" in new_desc and "- [4. Quiz 4](" in new_desc
+    assert report.progress == ["ENGR 40M quizzes 2–4: 1/3 done (3. Quiz 3)"]
+    assert "progress 1:" in format_report(report)

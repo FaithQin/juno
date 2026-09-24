@@ -83,12 +83,13 @@ class GradescopeSync:
     def _sections_cache(self) -> dict:
         return {name: SimpleNamespace(id=sid, name=name) for name, sid in self.section_ids.items()}
 
-    async def run(self, now: datetime | None = None) -> None:
+    async def run(self, now: datetime | None = None, *, quiet: bool = False) -> str | None:
+        """Sync once. Returns the text it sent (or would have sent, with quiet=True)."""
         now = now or self.now()
         fetched = await self._fetch()
         if fetched is None:
             await self._login_needed(now)
-            return
+            return None if not quiet else LOGIN_NAG
         items, course_for = fetched
 
         active = self.todoist.tasks(self.project_id)
@@ -120,14 +121,20 @@ class GradescopeSync:
                     "course_for": {str(gid): c.code for gid, c in course_for.items()},
                 }
                 self.store.kv_set("pending_job", json.dumps({"kind": JOB_KIND, "payload": payload, "question": ""}))
-                await self.send(self._question(pairs, new, course_for))
-                return
+                question = self._question(pairs, new, course_for)
+                if not quiet:
+                    await self.send(question)
+                return question
 
         plan = plan_sync(items, course_for, links, tasks, tz=self.tz, complete_when_submitted=self.complete_when_submitted)
         report = apply_plan(plan, todoist=self.todoist, store=self.store, project_id=self.project_id,
                             sections=self._sections_cache(), tz=self.tz, dry_run=False)
         if report.changed or report.errors:
-            await self.send("gradescope " + format_report(report))
+            text = "gradescope " + format_report(report)
+            if not quiet:
+                await self.send(text)
+            return text
+        return None
 
     def _question(self, pairs, new, course_for) -> str:
         n = len(pairs) + len(new)
