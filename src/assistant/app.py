@@ -84,6 +84,23 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
     return Runtime(settings, app_cfg, courses_cfg, store, todoist, calendar, ops, session)
 
 
+async def with_cleanup(ops, coro):
+    """Await one piece of work, then stop the browser (if one was started) before the loop closes."""
+    try:
+        return await coro
+    finally:
+        browser = getattr(ops, "browser", None)
+        if browser is not None:
+            try:
+                await browser.stop()
+            except Exception:
+                pass
+        import gc
+
+        gc.collect()   # finalize Playwright's driver transport while the loop is still open (py3.12 prints a warning otherwise)
+        await asyncio.sleep(0)
+
+
 async def serve(rt: Runtime) -> None:
     """Telegram polling plus the scheduler, until SIGINT/SIGTERM."""
     from .channels.telegram import TelegramChannel

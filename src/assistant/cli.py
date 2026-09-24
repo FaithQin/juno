@@ -98,7 +98,7 @@ def cmd_chat(args) -> int:
 def cmd_brief(args) -> int:
     import asyncio
 
-    from .app import build_runtime
+    from .app import build_runtime, with_cleanup
     from .jobs import run_brief_job
 
     rt = build_runtime()
@@ -106,7 +106,7 @@ def cmd_brief(args) -> int:
     async def show(text):
         print(text)
 
-    asyncio.run(run_brief_job(rt.ops, send=show))
+    asyncio.run(with_cleanup(rt.ops, run_brief_job(rt.ops, send=show)))
     return 0
 
 
