@@ -31,9 +31,10 @@ DUE_ERROR = "error: due must be an ISO date (2026-09-28) or datetime (2026-09-28
 class ChatOps:
     def __init__(self, *, store: Store, todoist, calendar, tz: ZoneInfo, courses: list[str],
                  sections: dict[str, str], classes_project_id: str, calendar_names: list[str],
-                 now: Callable[[], datetime], web=None, browser=None):
+                 now: Callable[[], datetime], web=None, browser=None, ed=None):
         self.web = web                        # WebReader, or None when links can't be opened
         self.browser = browser                # BrowserSession, or None when there is no browser
+        self.ed = ed                          # EdClient, or None without ED_API_TOKEN
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -354,6 +355,23 @@ class ChatOps:
         if self.web is None:
             return "i can't open links right now"
         return self.web.read(url)
+
+    def ed_announcements(self, course: str, limit: int = 5) -> str:
+        from .ed import format_announcements, match_course
+
+        code = normalize_course(course, self.courses)
+        if not code:
+            return f"'{course}' isn't one of your courses ({self._courses_list()})"
+        if self.ed is None:
+            return "ed isn't connected yet (ED_API_TOKEN in .env)"
+        try:
+            ed_course = match_course(self.ed.courses(), code)
+            if ed_course is None:
+                return f"i can't find {code} on ed"
+            threads = self.ed.threads(ed_course.id, limit=40)
+        except Exception as e:
+            return f"couldn't reach ed ({type(e).__name__}). try again in a bit"
+        return format_announcements(threads, course_code=code, tz=self.tz, limit=limit)
 
     # -- the real browser (phase 3) -------------------------------------------
 

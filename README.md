@@ -16,6 +16,8 @@ juno: a school assistant that grows into a general one. Python 3.12+, managed wi
 | Morning brief (classes, events, due today/tomorrow, overdue) | 7:00 daily | no |
 | Chat over Telegram: what's due, add/complete/move a task, snooze, remember, undo | when you text | yes (gpt-6-sol) |
 | Open links, search the web, and drive a real browser on Gradescope, Paperless, Ed, Canvas | when you text | yes |
+| Gradescope → Todoist (first run asks; then create-and-text) | every 3 hours | no |
+| Ed announcements by course | when you text | yes |
 
 ## Setup, once
 
@@ -144,5 +146,6 @@ tests/                  fakes for everything; no network
 6. Gradescope scraper (if email + password login works)
 7. Deploy: Docker on a DigitalOcean droplet ✅ (files ready; see docs/03-deploy.md)
 8. Full browser (Playwright): read and act behind logins, submit only with a yes ✅ (see docs/04-browser.md)
-9. Canvas calendar events → Google Calendar with dedup; CS 106B site scrape
-10. iMessage channel via Photon (needs a Node sidecar or a Python send path)
+9. Gradescope sync job and Ed announcements API ✅ (docs/05-gradescope-and-ed.md)
+10. Canvas calendar events → Google Calendar with dedup; CS 106B site scrape
+11. iMessage channel via Photon (needs a Node sidecar or a Python send path)

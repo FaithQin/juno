@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_ids: str = ""            # comma-separated; empty = setup mode (/start reveals your id)
     openai_api_key: str = ""               # pydantic-ai reads OPENAI_API_KEY from the environment too
+    ed_api_token: str = ""                 # edstem.org/us/settings/api-tokens
 
     @property
     def allowed_chat_ids(self) -> set[int]:
@@ -121,11 +122,16 @@ class SyncConfig(BaseModel):
     every_minutes: int = 60
 
 
+class GradescopeConfig(BaseModel):
+    every_hours: int = 3
+
+
 class AppConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     brief: BriefConfig = Field(default_factory=BriefConfig)
     nudges: NudgesConfig = Field(default_factory=NudgesConfig)
     sync: SyncConfig = Field(default_factory=SyncConfig)
+    gradescope: GradescopeConfig = Field(default_factory=GradescopeConfig)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

@@ -85,6 +85,17 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         """
         return ctx.deps.read_link(url)
 
+    @agent.tool
+    def ed_announcements(ctx: RunContext[ChatOps], course: str, limit: int = 5) -> str:
+        """Latest announcements and pinned posts from a course's Ed Discussion, with links.
+        Much cheaper than browsing Ed; use this first for anything about announcements.
+
+        Args:
+            course: course code such as "CS 106B".
+            limit: how many to return (default 5).
+        """
+        return ctx.deps.ed_announcements(course, limit)
+
     # -- the real browser: logged-in sites, clicking, forms --------------------
 
     @agent.tool

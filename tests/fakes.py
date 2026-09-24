@@ -49,6 +49,12 @@ class FakeTodoist:
     def get_task(self, task_id: str) -> FakeTask:
         return self._tasks[task_id]
 
+    def ensure_section(self, project_id, name, cache):
+        from types import SimpleNamespace
+        if name not in cache:
+            cache[name] = SimpleNamespace(id=f"S-{name}", name=name)
+        return cache[name]
+
     # writes
     def add_task(self, *, content, description="", project_id, section_id=None, due_at=None, due_date=None, priority=1):
         self._n += 1

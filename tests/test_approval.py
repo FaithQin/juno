@@ -92,3 +92,31 @@ async def test_new_message_while_pending_cancels_the_pending_submit(tmp_path):
         reply = await session.handle("actually what's due today")
     assert ops.browser.submitted == [] and session.pending is None
     assert reply.startswith("skipped the pending click")
+
+
+async def test_background_job_proposal_is_approved_or_declined_over_chat(tmp_path):
+    """A scheduled job can leave a proposal in the store; the next yes/no in chat answers it."""
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    seen: list = []
+
+    async def on_gradescope(payload, approved):
+        seen.append((payload, approved))
+        return "linked 1, added 2" if approved else "ok, skipped gradescope for now"
+
+    session.job_handlers["gradescope_first_run"] = on_gradescope
+    session.propose_job("gradescope_first_run", {"link": [1], "new": [2, 3]}, "gradescope found 3 things. reply yes or no")
+    assert store.kv_get("pending_job") is not None
+
+    with agent.override(model=FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("chat reply")]))):
+        assert await session.handle("yes") == "linked 1, added 2"
+        assert seen == [({"link": [1], "new": [2, 3]}, True)]
+        assert store.kv_get("pending_job") is None
+        assert await session.handle("hello") == "chat reply"          # nothing pending: normal chat
+
+        session.propose_job("gradescope_first_run", {"x": 1}, "again?")
+        assert await session.handle("no") == "ok, skipped gradescope for now"
+        session.propose_job("gradescope_first_run", {"x": 2}, "again?")
+        reply = await session.handle("what's due today")                # unrelated message: proposal stays pending
+        assert reply == "chat reply" and store.kv_get("pending_job") is not None

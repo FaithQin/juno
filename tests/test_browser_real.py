@@ -55,3 +55,19 @@ async def test_snapshot_type_select_and_click_on_a_real_page(tmp_path):
         assert "thanks Faith" in snap.text
     finally:
         await session.stop()
+
+
+async def test_html_returns_the_current_page_source(tmp_path):
+    session = BrowserSession(data_dir=tmp_path, headless=True)
+    try:
+        await session.start()
+    except Exception as e:
+        pytest.skip(f"chromium not available: {e}")
+    try:
+        ctx = await session._context(None)
+        session._page = await ctx.new_page()
+        await session._page.set_content(HTML)
+        html = await session.page_html()
+        assert 'id="s"' in html and "Lab sign-up" in html
+    finally:
+        await session.stop()

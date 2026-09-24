@@ -291,6 +291,20 @@ class BrowserSession:
                               elements=elements_from_js(raw or []))
         return self._snap
 
+    async def page_html(self) -> str:
+        """Raw source of the current page, for deterministic parsers (Gradescope)."""
+        _, op_lock = self._locks()
+        async with op_lock:
+            if self._page is None:
+                raise BrowserError("no page is open; use browse(url) first")
+            self.last_used = time.time()
+            return await self._page.content()
+
+    async def html(self, url: str) -> tuple[str, bool]:
+        """Open a URL and return (page source, login_required)."""
+        snap = await self.open(url)
+        return await self.page_html(), snap.login_required
+
     def describe_ref(self, ref: int) -> str:
         if self._snap:
             for el in self._snap.elements:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from dataclasses import dataclass
 from datetime import timedelta
@@ -77,6 +78,21 @@ class ChatSession:
         self.usage_limits = usage_limits
         self.run_timeout = run_timeout
         self.pending: PendingApproval | None = None
+        self.job_handlers: dict = {}      # kind → async (payload, approved) -> reply text
+
+    # -- proposals from scheduled jobs (e.g. the Gradescope first run) --------
+
+    def propose_job(self, kind: str, payload: dict, question: str) -> None:
+        self.store.kv_set("pending_job", json.dumps({"kind": kind, "payload": payload, "question": question}))
+
+    async def _answer_job(self, approved: bool) -> str:
+        raw = self.store.kv_get("pending_job")
+        job = json.loads(raw)
+        self.store.kv_delete("pending_job")
+        handler = self.job_handlers.get(job["kind"])
+        if handler is None:
+            return f"i lost the handler for {job['kind']}; nothing done"
+        return await handler(job["payload"], approved)
 
     def _history(self, now):
         history = []
@@ -121,6 +137,13 @@ class ChatSession:
         return await self._run(None, deferred=DeferredToolResults(approvals={p.tool_call_id: verdict}))
 
     async def handle(self, text: str) -> str:
+        if self.store.kv_get("pending_job"):
+            answer = _norm(text)
+            if answer in YES:
+                return await self._answer_job(True)
+            if answer in NO:
+                return await self._answer_job(False)
+            # anything else: normal chat, the proposal keeps waiting
         if self.pending is not None:
             answer = _norm(text)
             if answer in YES:

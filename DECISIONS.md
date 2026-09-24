@@ -122,3 +122,15 @@ Secrets in `.env` with 600 permissions, never committed. Daily token budget once
 | Memory | one Chromium, one context per site, one page, closed after 10 idle minutes; **resize the droplet to 2 GB if it runs out** |
 | Sandbox | Chromium runs as root without its sandbox inside the container (accepted for now; hardening later) |
 | Per-message limits | raised to 14 model requests / 120k tokens so multi-step browsing fits |
+
+## Phase 4 decisions (2026-09-24): Gradescope sync and Ed
+
+| Decision | Choice |
+|---|---|
+| Gradescope cadence | every 3 hours, through the saved browser login, no model involved |
+| First run | **propose over Telegram, wait for yes**: title matches to hand-made tasks plus the new items; a "no" is remembered by fingerprint |
+| Submitted on Gradescope | tick the Todoist task (same as Canvas) |
+| Naming | `COURSE: Name (Gradescope)`, matching the existing convention |
+| Ed | **official-ish API with a personal token** (`ED_API_TOKEN`); `ed_announcements` tool; browsing Ed stays available |
+| "Too many steps" | fixed by trimming old tool output from history before each model request (keep the last 3 in full); per-turn ceiling raised to 24 requests / 250k tokens as a backstop |
+| Editing tasks | new `edit_task` tool: title, notes, priority; undoable |

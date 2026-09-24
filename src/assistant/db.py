@@ -323,6 +323,10 @@ class Store:
         r = self.conn.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
         return r["value"] if r else None
 
+    def kv_delete(self, key: str) -> None:
+        self.conn.execute("DELETE FROM kv WHERE key=?", (key,))
+        self.conn.commit()
+
     def kv_set(self, key: str, value: str) -> None:
         self.conn.execute(
             "INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value)

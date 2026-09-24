@@ -22,7 +22,9 @@ from .chat import ChatSession
 from .chat_ops import ChatOps
 from .config import AppConfig, CoursesConfig, Settings, load_app_config, load_courses, project_root
 from .db import Store
+from .ed import EdClient
 from .gcal import GoogleCalendar
+from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, GradescopeSync
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
 from .status import describe_runtime
 from .todoist_client import TodoistClient
@@ -47,6 +49,8 @@ class Runtime:
     calendar: GoogleCalendar | None
     ops: ChatOps
     session: ChatSession
+    project_id: str = ""
+    sections: dict = None
 
 
 def load_persona() -> str:
@@ -77,11 +81,12 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
         classes_project_id=project.id, calendar_names=app_cfg.brief.calendars, now=now_utc,
         web=WebReader(canvas_url=settings.canvas_url, canvas_token=settings.canvas_token),
         browser=BrowserSession(data_dir=project_root() / "data", headless=True),   # starts on first use
+        ed=EdClient(settings.ed_api_token) if settings.ed_api_token else None,
     )
     agent = build_agent(app_cfg.agent.chat_model, persona=load_persona,   # loader: persona.md is re-read per message
                         web_search=app_cfg.agent.web_search)
     session = ChatSession(agent, ops, store, conversation_id=conversation_id)
-    return Runtime(settings, app_cfg, courses_cfg, store, todoist, calendar, ops, session)
+    return Runtime(settings, app_cfg, courses_cfg, store, todoist, calendar, ops, session, project.id, sections)
 
 
 async def with_cleanup(ops, coro):
@@ -140,8 +145,21 @@ async def serve(rt: Runtime) -> None:
         if rt.ops.browser is not None and await rt.ops.browser.close_idle(600):
             log.info("closed the idle browser page")
 
+    gradescope = GradescopeSync(
+        browser=rt.ops.browser, todoist=rt.todoist, store=rt.store, courses_cfg=rt.courses_cfg,
+        project_id=rt.project_id, sections=rt.sections, tz=rt.settings.tz, send=channel.send, now=now_utc,
+        complete_when_submitted=rt.settings.complete_when_submitted,
+    )
+    rt.session.job_handlers[GRADESCOPE_JOB] = gradescope.approve   # a yes/no in chat answers its proposal
+
+    async def gradescope_job():
+        try:
+            await gradescope.run()
+        except Exception:
+            log.exception("gradescope sync failed")
+
     sched = build_scheduler(rt.app_cfg, rt.settings.tz, sync=sync_job, nudges=nudges_job, brief=brief_job,
-                            browser_idle=browser_idle_job)
+                            browser_idle=browser_idle_job, gradescope=gradescope_job)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

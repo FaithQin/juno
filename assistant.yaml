@@ -20,3 +20,6 @@ nudges:
 
 sync:
   every_minutes: 60                      # Canvas → Todoist
+
+gradescope:
+  every_hours: 3                         # Gradescope → Todoist through the saved browser login

@@ -30,3 +30,10 @@ def test_browser_idle_job_is_optional():
     sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, browser_idle=noop)
     jobs = {j.id: j for j in sched.get_jobs()}
     assert "browser_idle" in jobs and jobs["browser_idle"].trigger.interval.total_seconds() == 300
+
+
+def test_gradescope_job_runs_every_few_hours():
+    cfg = AppConfig.model_validate({"gradescope": {"every_hours": 3}})
+    sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, gradescope=noop)
+    jobs = {j.id: j for j in sched.get_jobs()}
+    assert jobs["gradescope"].trigger.interval.total_seconds() == 3 * 3600

@@ -22,6 +22,7 @@ EXPECTED_TOOLS = {
     "get_tasks", "get_schedule", "add_task", "complete_task", "reschedule_task",
     "snooze_reminder", "remember", "forget", "undo", "read_link", "edit_task",
     "browse", "browser_click", "browser_type", "browser_select", "browser_submit", "browser_back",
+    "ed_announcements",
 }
 
 

@@ -149,3 +149,35 @@ def test_filters_unpublished_undated_and_unknown_courses():
 def test_fmt_due_is_local_time():
     assert fmt_due(FRI, TZ) == "Fri 11:59pm"
     assert fmt_due(FRI, TZ, with_date=True) == "Sep 25 11:59pm"
+
+
+def test_links_in_recognises_gradescope_assignment_urls():
+    text = "Gradescope assignment on [Gradescope](https://www.gradescope.com/courses/1359455/assignments/8709892)"
+    assert links_in(text) == {("gradescope", 8709892)}
+
+
+def test_gradescope_items_get_the_gradescope_naming_convention():
+    cme = Course(code="CME 102", canvas_id=232579)
+    it = CanvasItem(kind="gradescope", canvas_id=8709892, course_id=1359455, name="Pset1",
+                    due_at=FRI, html_url="https://www.gradescope.com/courses/1359455/assignments/8709892",
+                    submission_types=("gradescope",), external_url=None, group_id=None, group_name=None,
+                    submitted=False, published=True)
+    plan = plan_sync([it], {1359455: cme}, {}, {}, tz=TZ)
+    (c,) = plan.creates
+    assert c.content == "CME 102: Pset1 (Gradescope)"
+    assert c.description == "Gradescope assignment on [Gradescope](https://www.gradescope.com/courses/1359455/assignments/8709892)"
+
+
+def test_adopt_by_title_matches_hand_made_gradescope_tasks():
+    from assistant.sync import adopt_by_title
+
+    cme = Course(code="CME 102", canvas_id=232579)
+    t1 = FakeTask("T1", "CME 102: Pset 1 (Gradescope)", "")
+    t2 = FakeTask("T2", "CME 102: Find HW due dates on Gradescope", "")
+    t3 = FakeTask("T3", "MATSCI 88Q: Pre-lab 1 (Gradescope)", "")
+    items = [
+        CanvasItem("gradescope", 1, 1359455, "Pset1", FRI, "https://www.gradescope.com/courses/1359455/assignments/1", ("gradescope",), None, None, None, False, True),
+        CanvasItem("gradescope", 2, 1359455, "Pset2", FRI, "https://www.gradescope.com/courses/1359455/assignments/2", ("gradescope",), None, None, None, False, True),
+    ]
+    pairs = adopt_by_title(items, [t1, t2, t3], course_for={1359455: cme}, task_course={"T1": "CME 102", "T2": "CME 102", "T3": "MATSCI 88Q"})
+    assert [(it.name, t.id) for it, t in pairs] == [("Pset1", "T1")]     # Pset2 has no counterpart; T2/T3 don't match

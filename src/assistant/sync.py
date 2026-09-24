@@ -29,6 +29,7 @@ from .config import Course
 from .db import ItemLink, Store, TaskRow
 
 CANVAS_LINK_RE = re.compile(r"https?://[^\s/)]+/courses/(\d+)/(assignments|quizzes)/(\d+)")
+GRADESCOPE_LINK_RE = re.compile(r"https?://(?:www\.)?gradescope\.com/courses/(\d+)/assignments/(\d+)")
 LEADING_NUMBER_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\.?\s+")
 
 SUBMISSION_PHRASES = {
@@ -52,7 +53,11 @@ SUBMISSION_PHRASES = {
 def links_in(text: str | None) -> set[tuple[str, int]]:
     """Every Canvas assignment/quiz link in a piece of text → {(kind, id)}."""
     found: set[tuple[str, int]] = set()
+    for m in GRADESCOPE_LINK_RE.finditer(text or ""):
+        found.add(("gradescope", int(m.group(2))))
     for m in CANVAS_LINK_RE.finditer(text or ""):
+        if "gradescope.com" in m.group(0):
+            continue
         kind = "assignment" if m.group(2) == "assignments" else "quiz"
         found.add((kind, int(m.group(3))))
     return found
@@ -103,10 +108,14 @@ def submission_phrase(item: CanvasItem) -> str:
 # --------------------------------------------------------------------------
 
 def single_content(item: CanvasItem, course: Course) -> str:
+    if item.kind == "gradescope":
+        return f"{course.code}: {item.name} (Gradescope)"     # the convention already in the Classes project
     return f"{course.code}: {item.name}"
 
 
 def single_description(item: CanvasItem) -> str:
+    if item.kind == "gradescope":
+        return f"Gradescope assignment on [Gradescope]({item.html_url})"
     return f"{submission_phrase(item)} on [Canvas]({item.html_url})"
 
 
@@ -330,6 +339,38 @@ def adopt_links(active_tasks, items: list[CanvasItem], links: dict[tuple[str, in
                 due_at=iso(it.due_at) if it else None, submitted=it.submitted if it else False,
             ))
     return new
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def adopt_by_title(items: list[CanvasItem], active_tasks, *, course_for: dict[int, Course],
+                   task_course: dict[str, str]) -> list[tuple[CanvasItem, object]]:
+    """Hand-made tasks without a link, matched by course plus title (the Gradescope first run).
+
+    Only proposed, never applied silently: the research is clear that title matching
+    duplicates on renames, so Faith confirms the list once and links are recorded from then on.
+    """
+    pairs: list[tuple[CanvasItem, object]] = []
+    used: set[str] = set()
+    for it in items:
+        course = course_for.get(it.course_id)
+        if course is None:
+            continue
+        key = _squash(it.name)
+        if len(key) < 3:
+            continue
+        for t in active_tasks:
+            if t.id in used or task_course.get(t.id) != course.code:
+                continue
+            body = _squash(t.content)
+            body_wo_course = body.replace(_squash(course.code), "", 1).replace("gradescope", "")
+            if key == body_wo_course or (len(key) >= 5 and key in body_wo_course):
+                pairs.append((it, t))
+                used.add(t.id)
+                break
+    return pairs
 
 
 def _task_due_iso(task) -> str | None:

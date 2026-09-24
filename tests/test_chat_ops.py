@@ -174,3 +174,32 @@ def test_edit_task_needs_something_to_change_and_a_single_match(tmp_path):
     assert ops.edit_task("assignment 1") == "nothing to change: give a new title, notes, or priority"
     assert ops.edit_task("engr 40m", notes="x").startswith("which one?")
     assert ops.edit_task("assignment 1", priority="p9") == "error: priority must be p1, p2, p3 or p4"
+
+
+class FakeEd:
+    def __init__(self):
+        from assistant.ed import EdCourse, EdThread
+        from datetime import datetime, timezone
+        self._courses = [EdCourse(70001, "CS 106B", "Programming Abstractions", "active", "2026", "Autumn")]
+        self._threads = [EdThread(9001, 12, "announcement", "Section sign-ups open Thursday", "Sign-ups open Thu 12pm.",
+                                  "Logistics", True, datetime(2026, 9, 23, 15, 4, 5, tzinfo=timezone.utc),
+                                  "https://edstem.org/us/courses/70001/discussion/9001")]
+
+    def courses(self):
+        return self._courses
+
+    def threads(self, course_id, *, limit=30, sort="new"):
+        assert course_id == 70001
+        return self._threads
+
+
+def test_ed_announcements_by_course(tmp_path):
+    ops, *_ = make_ops(tmp_path)
+    assert ops.ed_announcements("cs106b") == "ed isn't connected yet (ED_API_TOKEN in .env)"
+    ops.ed = FakeEd()
+    text = ops.ed_announcements("cs106b")
+    assert text.splitlines()[0] == "CS 106B announcements and pinned posts (newest first):"
+    assert "Section sign-ups open Thursday" in text
+    assert ops.ed_announcements("physics") == "'physics' isn't one of your courses (ENGR 40M, CS 106B, CME 102, MATSCI 88Q, EE 310, EE 100)"
+    ops.ed._courses = []
+    assert ops.ed_announcements("cs106b") == "i can't find CS 106B on ed"
