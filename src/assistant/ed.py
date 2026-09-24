@@ -11,6 +11,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -60,18 +61,39 @@ def document_to_text(document: str) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
+def ed_token_from_session(path: Path) -> str | None:
+    """The Ed web app keeps its auth token in browser local storage; the saved login
+    (`browser-login ed`) captures it, so no separate API token is needed."""
+    try:
+        state = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+    for origin in state.get("origins", []):
+        if "edstem" not in origin.get("origin", ""):
+            continue
+        for item in origin.get("localStorage", []):
+            if item.get("name") == "authToken" and item.get("value"):
+                return item["value"]
+    return None
+
+
 def default_fetch(url: str, headers: dict) -> tuple[int, str]:
     r = httpx.get(url, headers=headers, timeout=20)
     return r.status_code, r.text
 
 
 class EdClient:
-    def __init__(self, token: str, fetch: Fetch = default_fetch):
+    def __init__(self, token: str, fetch: Fetch = default_fetch, *, scheme: str = "bearer"):
         self.token = token
         self.fetch = fetch
+        self.scheme = scheme     # "bearer" for a token from Ed's settings page; "x-token" for the web app's session token
+
+    def _headers(self) -> dict:
+        auth = {"x-token": self.token} if self.scheme == "x-token" else {"Authorization": f"Bearer {self.token}"}
+        return {**auth, "Accept": "application/json"}
 
     def _get(self, path: str) -> dict:
-        status, body = self.fetch(f"{API_BASE}/{path}", {"Authorization": f"Bearer {self.token}", "Accept": "application/json"})
+        status, body = self.fetch(f"{API_BASE}/{path}", self._headers())
         if status != 200:
             raise RuntimeError(f"ed api {path} → HTTP {status}")
         return json.loads(body)
@@ -99,7 +121,7 @@ class EdClient:
 
 def match_course(courses: list[EdCourse], code: str) -> EdCourse | None:
     key = _squash(code)
-    hits = [c for c in courses if key and key in _squash(c.code)]
+    hits = sorted((c for c in courses if key and key in _squash(c.code)), key=lambda c: c.id, reverse=True)
     active = [c for c in hits if c.status == "active"]
     return (active or hits or [None])[0]
 

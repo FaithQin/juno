@@ -50,8 +50,11 @@ courses and `GET /api/courses/<id>/threads` for posts. Posts are stored as XML-i
 `ed_announcements` tool returns announcements and pinned posts, newest first, with links,
 and the persona tells juno to try it before browsing Ed.
 
-Token: Ed → Settings → API tokens → create one, paste as `ED_API_TOKEN` in `.env`,
-redeploy. Without it, the tool answers "ed isn't connected yet".
+Token: Stanford's SSO setup hides Ed's API-token page, so juno uses the token the Ed web
+app itself stores in browser local storage, which `browser-login ed` captures in
+`data/browser/ed.json`. That token is sent as an `x-token` header (a settings-page token
+would use `Bearer`). Re-running `browser-login ed` refreshes it. `ED_API_TOKEN` in `.env`
+is only for the case where the settings page does offer a token.
 
 ## Reading the code
 

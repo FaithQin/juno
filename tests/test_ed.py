@@ -12,6 +12,7 @@ USER = {"courses": [
     {"course": {"id": 70001, "code": "CS 106B", "name": "Programming Abstractions", "year": "2026", "session": "Autumn", "status": "active"}},
     {"course": {"id": 60001, "code": "CS 106B", "name": "Programming Abstractions", "year": "2025", "session": "Autumn", "status": "archived"}},
     {"course": {"id": 70002, "code": "ENGR 40M", "name": "An Intro to Making", "year": "2026", "session": "Autumn", "status": "active"}},
+    {"course": {"id": 50001, "code": "ENGR 40M", "name": "An Intro to Making", "year": "2025", "session": "Autumn", "status": "active"}},  # Ed never archived it
 ]}
 THREADS = {"threads": [
     {"id": 9001, "number": 12, "type": "announcement", "title": "Section sign-ups open Thursday", "category": "Logistics",
@@ -25,7 +26,7 @@ THREADS = {"threads": [
 
 
 def fake_fetch(url, headers):
-    assert headers["Authorization"] == "Bearer tok"
+    assert headers.get("Authorization") == "Bearer tok" or headers.get("x-token") == "tok"
     if url.endswith("/api/user"):
         return 200, json.dumps(USER)
     if "/api/courses/70001/threads" in url:
@@ -43,7 +44,13 @@ def test_courses_and_active_match():
     courses = ed.courses()
     assert [(c.id, c.code, c.status) for c in courses] == [(70001, "CS 106B", "active"), (60001, "CS 106B", "archived"), (70002, "ENGR 40M", "active")]
     assert match_course(courses, "cs106b").id == 70001          # the active one, not last year's
+    assert match_course(courses, "engr 40m").id == 70002        # two "active": the newer (higher id) wins
     assert match_course(courses, "physics") is None
+
+
+def test_session_tokens_use_the_x_token_header_and_api_tokens_use_bearer():
+    assert EdClient("tok", scheme="x-token")._headers() == {"x-token": "tok", "Accept": "application/json"}
+    assert EdClient("tok")._headers() == {"Authorization": "Bearer tok", "Accept": "application/json"}
 
 
 def test_threads_and_announcement_formatting():
@@ -59,3 +66,17 @@ def test_threads_and_announcement_formatting():
     assert lines[2] == "  Sign-ups open Thu 12pm at the portal (https://cs198.stanford.edu/section/signup). Sections start week 2."
     assert lines[3] == "  https://edstem.org/us/courses/70001/discussion/9001"
     assert "Welcome!" in text and "Help with A0" not in text          # questions aren't announcements
+
+
+def test_token_is_read_from_the_saved_browser_login(tmp_path):
+    from assistant.ed import ed_token_from_session
+
+    state = {"cookies": [], "origins": [
+        {"origin": "https://edstem.org", "localStorage": [{"name": "region", "value": "us"}, {"name": "authToken", "value": "a.b.c"}]},
+    ]}
+    path = tmp_path / "ed.json"
+    path.write_text(json.dumps(state))
+    assert ed_token_from_session(path) == "a.b.c"
+    assert ed_token_from_session(tmp_path / "missing.json") is None
+    path.write_text(json.dumps({"cookies": [], "origins": []}))
+    assert ed_token_from_session(path) is None

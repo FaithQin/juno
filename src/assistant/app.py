@@ -22,7 +22,7 @@ from .chat import ChatSession
 from .chat_ops import ChatOps
 from .config import AppConfig, CoursesConfig, Settings, load_app_config, load_courses, project_root
 from .db import Store
-from .ed import EdClient
+from .ed import EdClient, ed_token_from_session
 from .gcal import GoogleCalendar
 from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, GradescopeSync
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
@@ -53,6 +53,15 @@ class Runtime:
     sections: dict = None
 
 
+def _ed_client(settings: Settings) -> EdClient | None:
+    """A token from Ed's settings page if you have one; otherwise the web session's token
+    captured by `browser-login ed` (Stanford's SSO setup hides the token page)."""
+    if settings.ed_api_token:
+        return EdClient(settings.ed_api_token)
+    token = ed_token_from_session(project_root() / "data" / "browser" / "ed.json")
+    return EdClient(token, scheme="x-token") if token else None
+
+
 def load_persona() -> str:
     path = project_root() / "persona.md"
     return path.read_text(encoding="utf-8") if path.exists() else "you are a brief, lowercase personal assistant."
@@ -81,7 +90,7 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
         classes_project_id=project.id, calendar_names=app_cfg.brief.calendars, now=now_utc,
         web=WebReader(canvas_url=settings.canvas_url, canvas_token=settings.canvas_token),
         browser=BrowserSession(data_dir=project_root() / "data", headless=True),   # starts on first use
-        ed=EdClient(settings.ed_api_token) if settings.ed_api_token else None,
+        ed=_ed_client(settings),
     )
     agent = build_agent(app_cfg.agent.chat_model, persona=load_persona,   # loader: persona.md is re-read per message
                         web_search=app_cfg.agent.web_search)
