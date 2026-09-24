@@ -32,7 +32,8 @@ class Site:
 
 SITES: dict[str, Site] = {
     "gradescope": Site("gradescope", "Gradescope", ("gradescope.com",), "https://www.gradescope.com/login", "https://www.gradescope.com/"),
-    "paperless": Site("paperless", "Paperless (CS 106B)", ("paperless.stanford.edu",), "https://paperless.stanford.edu/", "https://paperless.stanford.edu/"),
+    "paperless": Site("paperless", "Paperless (CS 106B)", ("paperless.stanford.edu", "cs198.stanford.edu"),
+                      "https://paperless.stanford.edu/", "https://paperless.stanford.edu/"),
     "ed": Site("ed", "Ed Discussion", ("edstem.org",), "https://edstem.org/us/login", "https://edstem.org/us/dashboard"),
     "canvas": Site("canvas", "Canvas", ("canvas.stanford.edu",), "https://canvas.stanford.edu/login", "https://canvas.stanford.edu/"),
 }

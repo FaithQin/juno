@@ -148,6 +148,8 @@ def cmd_browser_login(args) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     async def run():
+        import threading
+
         from playwright.async_api import async_playwright
 
         async with async_playwright() as pw:
@@ -157,13 +159,39 @@ def cmd_browser_login(args) -> int:
             page = await context.new_page()
             await page.goto(site.login_url)
             print(f"a browser window opened at {site.login_url}")
-            print(f"log in to {site.name} there (Duo included). when you can see you're logged in, come back here and press Enter.")
-            await asyncio.get_running_loop().run_in_executor(None, input)
-            if looks_like_login(page.url, site):
-                print(f"warning: the browser is still on a login page ({page.url}); saving anyway")
-            await context.storage_state(path=str(path))
-            path.chmod(0o600)
-            await browser.close()
+            print(f"log in to {site.name} there (Duo included). when you're in, press Enter here or just close the window.")
+
+            loop = asyncio.get_running_loop()
+            done = asyncio.Event()
+            page.on("close", lambda _: loop.call_soon_threadsafe(done.set))
+            browser.on("disconnected", lambda _: loop.call_soon_threadsafe(done.set))
+            if sys.stdin.isatty():   # launched from a terminal: Enter also finishes
+                threading.Thread(target=lambda: (input(), loop.call_soon_threadsafe(done.set)), daemon=True).start()
+
+            # save every couple of seconds while the window is open, so closing it loses nothing
+            last_url = page.url
+            while not done.is_set():
+                try:
+                    await context.storage_state(path=str(path))
+                    path.chmod(0o600)
+                    last_url = page.url
+                except Exception:
+                    break
+                try:
+                    await asyncio.wait_for(done.wait(), timeout=2)
+                except asyncio.TimeoutError:
+                    pass
+            try:
+                await context.storage_state(path=str(path))
+            except Exception:
+                pass
+            try:
+                await browser.close()
+            except Exception:
+                pass
+
+        if looks_like_login(last_url, site):
+            print(f"warning: the last page seen was still a login page ({last_url}); if you didn't finish logging in, run this again")
         print(f"saved {path}")
         print("ship it to the server with: scripts/deploy.sh root@SERVER_IP")
 

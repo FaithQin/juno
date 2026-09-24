@@ -8,6 +8,7 @@ from assistant.sites import SITES, looks_like_login, session_path, site_for_url
 def test_every_configured_site_is_recognised_by_host():
     assert site_for_url("https://www.gradescope.com/courses/123").key == "gradescope"
     assert site_for_url("https://paperless.stanford.edu/assignments").key == "paperless"
+    assert site_for_url("https://cs198.stanford.edu/section/portal").key == "paperless"   # where the login actually lands
     assert site_for_url("https://us.edstem.org/courses/1/discussion").key == "ed"
     assert site_for_url("https://canvas.stanford.edu/courses/231533/pages/lab-logistics").key == "canvas"
     assert site_for_url("https://example.com/") is None
