@@ -27,6 +27,7 @@ from .gcal import GoogleCalendar
 from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, GradescopeSync
 from .calendar_sync import JOB_KIND as CALENDAR_JOB, CalendarSync, canvas_events_from_api
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
+from .outlook_sync import JOB_KIND as OUTLOOK_JOB, OutlookSync
 from .status import describe_runtime
 from .todoist_client import TodoistClient
 from .web import WebReader
@@ -76,6 +77,25 @@ def build_calendar_sync(rt: "Runtime", send) -> CalendarSync:
 
     return CalendarSync(fetch_events=fetch_events, calendar=rt.calendar, store=rt.store, courses_cfg=rt.courses_cfg,
                         target_calendar=rt.app_cfg.calendar.target, tz=rt.settings.tz, send=send, now=now_utc)
+
+
+def build_outlook_sync(rt: "Runtime", send) -> OutlookSync | None:
+    """None until OUTLOOK_ICS_URL is in .env. The fetch is one GET of the published link."""
+    url = rt.settings.outlook_ics_url.strip()
+    if not url:
+        return None
+    if url.startswith("webcal://"):
+        url = "https://" + url[len("webcal://"):]
+
+    def fetch() -> str:
+        import httpx
+
+        r = httpx.get(url, timeout=30, follow_redirects=True)
+        r.raise_for_status()
+        return r.text
+
+    return OutlookSync(fetch=fetch, calendar=rt.calendar, store=rt.store, target_calendar=rt.app_cfg.outlook.target,
+                       search_calendars=rt.app_cfg.brief.calendars, tz=rt.settings.tz, send=send, now=now_utc)
 
 
 def load_persona() -> str:
@@ -202,8 +222,23 @@ async def serve(rt: Runtime) -> None:
         except Exception:
             log.exception("calendar sync failed")
 
+    outlook = build_outlook_sync(rt, channel.send)
+    outlook_job = None
+    if outlook is not None:
+        rt.session.job_handlers[OUTLOOK_JOB] = outlook.approve
+        rt.ops.sync_outlook = lambda: asyncio.run_coroutine_threadsafe(outlook.run(quiet=True), loop).result(timeout=120)
+
+        async def outlook_job():
+            try:
+                await outlook.run()
+            except Exception:
+                log.exception("outlook sync failed")
+    else:
+        log.info("OUTLOOK_ICS_URL is empty: outlook → google calendar is off")
+
     sched = build_scheduler(rt.app_cfg, rt.settings.tz, sync=sync_job, nudges=nudges_job, brief=brief_job,
-                            browser_idle=browser_idle_job, gradescope=gradescope_job, calendar=calendar_job)
+                            browser_idle=browser_idle_job, gradescope=gradescope_job, calendar=calendar_job,
+                            outlook=outlook_job)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

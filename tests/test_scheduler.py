@@ -44,3 +44,10 @@ def test_calendar_job_runs_hourly_by_default():
     sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, calendar=noop)
     jobs = {j.id: j for j in sched.get_jobs()}
     assert jobs["calendar"].trigger.interval.total_seconds() == 3600
+
+
+def test_outlook_job_runs_every_ten_minutes_by_default():
+    cfg = AppConfig()
+    sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, outlook=noop)
+    jobs = {j.id: j for j in sched.get_jobs()}
+    assert jobs["outlook"].trigger.interval.total_seconds() == 600

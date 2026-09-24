@@ -89,13 +89,14 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         return ctx.deps.read_link(url)
 
     @agent.tool
-    def sync_now(ctx: RunContext[ChatOps], source: Literal["all", "canvas", "gradescope"] = "all") -> str:
+    def sync_now(ctx: RunContext[ChatOps], source: Literal["all", "canvas", "gradescope", "outlook"] = "all") -> str:
         """Check Canvas and/or Gradescope right now and update Todoist: new assignments get tasks,
         submitted ones get ticked, and quizzes finished inside a batch get a ✅ in the task. Use this
         when Faith says she finished or submitted something, instead of completing the task by hand.
+        "outlook" checks her Outlook calendar for meetings not yet on Google Calendar and proposes them.
 
         Args:
-            source: all (default), canvas, or gradescope.
+            source: all (default), canvas, gradescope, or outlook.
         """
         return ctx.deps.sync_now(source)
 

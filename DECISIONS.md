@@ -169,3 +169,18 @@ Calendar. All of the following are **default (mine)** except where marked; each 
 | Canvas in the browser | **never**: the API token covers tasks, events and links; no Canvas re-logins |
 | Learning preferences | persona rule: corrections are saved with `remember` unprompted; the fact list is in every prompt |
 | Outlook → Google Calendar | **not started**: needs Faith's answers (see HANDOFF → scoping questions) |
+
+## Phase 7 decisions (2026-09-24, night): Outlook meetings → Google Calendar
+
+Faith's answers, in her words where possible.
+
+| Decision | Choice |
+|---|---|
+| Access | **Published Outlook calendar link (ICS)**; "Publish a calendar" is available in her Stanford Outlook. URL in `.env` as `OUTLOOK_ICS_URL`, nowhere else |
+| Which meetings | **Everything new on the Outlook calendar, including tentative invites** |
+| Target | **Stanford** calendar |
+| Confirmation | every new item is proposed over Telegram; yes copies it with all details; no is remembered by id |
+| Cadence | **default (mine):** every 10 minutes |
+| Attendees | never invited on Google (that would email them); not in the feed anyway |
+| Cancellations | never deleted; a vanished meeting is reported once, she says "delete it" if she wants |
+| Canvas browsing | **stays off**; Faith will name the Canvas pages she still needs (grades? modules? files?) and they become API tools |

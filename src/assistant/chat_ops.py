@@ -39,6 +39,7 @@ class ChatOps:
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
         self.sync_canvas = None               # () -> Report, wired by app.py
         self.sync_gradescope = None           # () -> str | None, wired by app.py (runs the async job on the main loop)
+        self.sync_outlook = None              # () -> str | None, wired by app.py when OUTLOOK_ICS_URL is set
         self.answer_job = None                # async (approved) -> str, wired by ChatSession
         self.store = store
         self.todoist = todoist
@@ -501,7 +502,9 @@ class ChatOps:
         """Run the Canvas and/or Gradescope sync immediately and return what changed."""
         from .sync import format_report
 
-        if self.sync_canvas is None and self.sync_gradescope is None:
+        if source == "outlook" and self.sync_outlook is None:
+            return "outlook isn't connected (OUTLOOK_ICS_URL in .env)"
+        if self.sync_canvas is None and self.sync_gradescope is None and self.sync_outlook is None:
             return "syncs aren't wired up in this context"
         parts: list[str] = []
         if source in ("all", "canvas") and self.sync_canvas is not None:
@@ -517,6 +520,12 @@ class ChatOps:
                 parts.append(text or "gradescope: nothing new")
             except Exception as e:
                 parts.append(f"gradescope: sync failed ({type(e).__name__})")
+        if source in ("all", "outlook") and self.sync_outlook is not None:
+            try:
+                text = self.sync_outlook()
+                parts.append(text or "outlook: nothing new")
+            except Exception as e:
+                parts.append(f"outlook: sync failed ({type(e).__name__})")
         return "\n\n".join(parts) if parts else "nothing to sync for that source"
 
     def ed_announcements(self, course: str, limit: int = 5) -> str:

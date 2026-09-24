@@ -115,3 +115,10 @@ async def test_unanswered_proposal_is_asked_once(tmp_path):
     assert len(out.sent) == 1
     assert store.pending_job()["question"] == out.sent[0]
     assert await job.run(quiet=True) == out.sent[0]  # sync_now still learns what's waiting on her
+
+
+async def test_waits_while_another_jobs_proposal_is_pending(tmp_path):
+    job, store, todoist, out = make_job(tmp_path, [])
+    store.propose_job("outlook_new", {"digest": "x"}, "outlook: 1 meeting. yes or no?", at=NOW)
+    assert await job.run() is None and out.sent == [] and store.pending_job()["kind"] == "outlook_new"
+    assert await job.run(quiet=True) == "gradescope: 1 open assignment to propose, once you've answered the outlook proposal"

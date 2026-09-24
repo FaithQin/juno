@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-24 (night, later)
+- Phase 7: Outlook meetings → Google Calendar from a published Outlook calendar link (ICS), every 10 min: new items
+  (incl. tentative invites) proposed over Telegram, matched against hand-made events, series copied with their rules,
+  moves patched, disappearances reported once; `sync_now(source="outlook")`; `uv run assistant outlook --print`.
+  `docs/08-outlook.md`. One proposal at a time across jobs (the second waits). Paperless login refreshed and shipped.
+
 ## 2026-09-24 (night)
 - Cost: the clock moved from the instructions onto each user message so OpenAI's prompt cache hits (measured 73% of
   input from cache right after); previous turns are re-sent without tool traffic or reasoning; `openai_reasoning_context`

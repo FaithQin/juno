@@ -30,3 +30,11 @@ def test_settings_has_phase2_keys_with_safe_defaults(monkeypatch):
     s = Settings(_env_file=None)
     assert s.telegram_bot_token == "" and s.telegram_chat_ids == "" and s.openai_api_key == ""
     assert s.google_credentials_path.name == "google_credentials.json"
+
+
+def test_outlook_config_and_setting_defaults(monkeypatch):
+    cfg = AppConfig()
+    assert cfg.outlook.target == "Stanford" and cfg.outlook.every_minutes == 10
+    monkeypatch.setenv("CANVAS_TOKEN", "x")
+    monkeypatch.setenv("TODOIST_TOKEN", "y")
+    assert Settings(_env_file=None).outlook_ics_url == ""

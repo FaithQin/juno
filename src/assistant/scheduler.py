@@ -21,7 +21,7 @@ Job = Callable[[], Awaitable[None]]
 
 def build_scheduler(cfg: AppConfig, tz: ZoneInfo, *, sync: Job, nudges: Job, brief: Job,
                     browser_idle: Job | None = None, gradescope: Job | None = None,
-                    calendar: Job | None = None) -> AsyncIOScheduler:
+                    calendar: Job | None = None, outlook: Job | None = None) -> AsyncIOScheduler:
     sched = AsyncIOScheduler(timezone=tz, job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 3600})
     sched.add_job(sync, IntervalTrigger(minutes=cfg.sync.every_minutes, timezone=tz), id="sync", name="canvas → todoist")
     sched.add_job(nudges, IntervalTrigger(minutes=cfg.nudges.scan_minutes, timezone=tz), id="nudges", name="due-date nudges")
@@ -33,4 +33,6 @@ def build_scheduler(cfg: AppConfig, tz: ZoneInfo, *, sync: Job, nudges: Job, bri
         sched.add_job(gradescope, IntervalTrigger(hours=cfg.gradescope.every_hours, timezone=tz), id="gradescope", name="gradescope → todoist")
     if calendar is not None:
         sched.add_job(calendar, IntervalTrigger(minutes=cfg.calendar.every_minutes, timezone=tz), id="calendar", name="canvas events → calendar")
+    if outlook is not None:
+        sched.add_job(outlook, IntervalTrigger(minutes=cfg.outlook.every_minutes, timezone=tz), id="outlook", name="outlook → google calendar")
     return sched

@@ -120,11 +120,15 @@ class GradescopeSync:
                     "course_for": {str(gid): c.code for gid, c in course_for.items()},
                 }
                 question = self._question(pairs, new, course_for)
-                pending = self.store.pending_job()
-                if not (pending and pending["kind"] == JOB_KIND and pending["payload"].get("digest") == digest):
+                slot = self.store.proposal_slot(JOB_KIND, digest)
+                if slot == "free":
                     self.store.propose_job(JOB_KIND, payload, question, at=now)   # first time: ask; after that, wait
                     if not quiet:
                         await self.send(question)
+                elif slot != "asked":
+                    n = len(pairs) + len(new)
+                    return (f"gradescope: {n} open assignment{'s' if n != 1 else ''} to propose, "
+                            f"once you've answered the {slot} proposal") if quiet else None
                 return question
 
         plan = plan_sync(items, course_for, links, tasks, tz=self.tz, complete_when_submitted=self.complete_when_submitted)

@@ -173,9 +173,8 @@ class CalendarSync:
                              "end": ev.end.isoformat() if ev.end else None, "location": ev.location, "description": ev.description,
                              "html_url": ev.html_url} for ev in new],
                 }
-                pending = self.store.pending_job()
-                if pending and pending["kind"] == JOB_KIND and pending["payload"].get("digest") == digest:
-                    return                                   # asked already; her answer is still coming
+                if self.store.proposal_slot(JOB_KIND, digest) != "free":
+                    return                                   # asked already, or another job's question is out first
                 question = self._question(len(events), pairs, new)
                 self.store.propose_job(JOB_KIND, payload, question, at=now)
                 await self.send(question)

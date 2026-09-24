@@ -312,3 +312,10 @@ async def test_browse_sends_canvas_through_the_api_never_the_browser(tmp_path):
     assert await ops.browse("https://canvas.stanford.edu/courses/1/assignments/2") == "read via api: https://canvas.stanford.edu/courses/1/assignments/2"
     out = await ops.browse("https://canvas.stanford.edu/calendar")
     assert out.startswith("i don't browse canvas") and "get_schedule" in out and "get_tasks" in out
+
+
+def test_sync_now_can_check_outlook_on_demand(tmp_path):
+    ops, *_ = make_ops(tmp_path, SAMPLE)
+    assert ops.sync_now("outlook") == "outlook isn't connected (OUTLOOK_ICS_URL in .env)"
+    ops.sync_outlook = lambda: "outlook: 1 upcoming meeting isn't on your google calendar yet.\n- x\nreply yes to add them, or no to skip these (i'll still ask about new ones)"
+    assert ops.sync_now("outlook").startswith("outlook: 1 upcoming meeting")

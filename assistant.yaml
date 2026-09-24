@@ -27,3 +27,7 @@ gradescope:
 calendar:
   target: Stanford                       # Google calendar that receives Canvas events
   every_minutes: 60
+
+outlook:
+  target: Stanford                       # Google calendar that receives confirmed Outlook meetings
+  every_minutes: 10                      # how often the published Outlook link is checked

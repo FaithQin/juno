@@ -135,3 +135,10 @@ async def test_unanswered_proposal_is_asked_once_until_canvas_changes(tmp_path):
     box["events"].append(cev(884166, 25, 10, 0, title="EE 310 review session"))   # canvas added one: a new question
     await sync.run()
     assert len(out.sent) == 2 and "EE 310 review session" in out.sent[1]
+
+
+async def test_waits_while_another_jobs_proposal_is_pending(tmp_path):
+    sync, store, cal, out, box = make_sync(tmp_path, [cev(884165, 24, 16, 30)], [])
+    store.propose_job("outlook_new", {"digest": "x"}, "outlook: 1 meeting. yes or no?", at=NOW)
+    await sync.run()
+    assert out.sent == [] and store.pending_job()["kind"] == "outlook_new"

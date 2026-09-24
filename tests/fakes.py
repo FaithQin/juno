@@ -101,6 +101,8 @@ class FakeCalendar:
     def __init__(self, events_by_day: dict[date, list[Event]] | None = None, names: dict[str, str] | None = None):
         self.names = names or {"Stanford": "cal-stanford", "TA": "cal-ta", "faithclairvoyant333@gmail.com": "primary"}
         self.events: dict[str, Event] = {}
+        self.bodies: dict[str, dict] = {}                 # what create_event was given, by new id
+        self.patches: list[tuple[str, str, dict]] = []    # (calendar_id, event_id, patch)
         self.deleted: list[str] = []
         self._n = 0
         for day, evs in (events_by_day or {}).items():
@@ -131,11 +133,15 @@ class FakeCalendar:
         name = next((n for n, i in self.names.items() if i == calendar_id), calendar_id)
         start = datetime.fromisoformat(body["start"]["dateTime"]) if "dateTime" in body["start"] else None
         end = datetime.fromisoformat(body["end"]["dateTime"]) if "dateTime" in body["end"] else None
-        e = self._add(Event(body["summary"], start, end, body.get("location"), False, name, calendar_id=calendar_id,
+        if start is None:   # all-day
+            start = datetime.fromisoformat(body["start"]["date"]).replace(tzinfo=timezone.utc)
+        e = self._add(Event(body["summary"], start, end, body.get("location"), "date" in body["start"], name, calendar_id=calendar_id,
                             description=body.get("description")))
+        self.bodies[e.id] = body
         return {"id": e.id, "summary": e.title, "extendedProperties": body.get("extendedProperties", {})}
 
     def update_event(self, calendar_id, event_id, patch):
+        self.patches.append((calendar_id, event_id, patch))
         e = self.events[event_id]
         start = datetime.fromisoformat(patch["start"]["dateTime"]) if "start" in patch else e.start
         end = datetime.fromisoformat(patch["end"]["dateTime"]) if "end" in patch else e.end

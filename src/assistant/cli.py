@@ -316,6 +316,37 @@ def cmd_browser_check(_args) -> int:
     return 0
 
 
+def cmd_outlook(args) -> int:
+    """Run the Outlook → Google Calendar sync once, now."""
+    from .app import build_outlook_sync, build_runtime, with_cleanup
+
+    rt = build_runtime()
+
+    async def to_console(text):
+        print(text)
+
+    async def to_telegram(text):
+        from telegram import Bot
+
+        print(text)
+        async with Bot(rt.settings.telegram_bot_token) as bot:
+            for chat_id in sorted(rt.settings.allowed_chat_ids):
+                await bot.send_message(chat_id, text)
+
+    send = to_console if args.print or not rt.settings.telegram_bot_token else to_telegram
+    job = build_outlook_sync(rt, send)
+    if job is None:
+        print("OUTLOOK_ICS_URL is empty in .env (Outlook web → Calendar → Shared calendars → Publish a calendar)")
+        return 1
+
+    async def go():
+        await job.run()
+        print("(proposal sent; answer it in telegram)" if rt.store.kv_get("pending_job") else "(nothing to report)")
+
+    run_one_shot(with_cleanup(rt.ops, go()))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="assistant", description="Faith's personal assistant")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -341,11 +372,14 @@ def main(argv: list[str] | None = None) -> int:
     p_gs.add_argument("--print", action="store_true", help="print instead of texting")
     p_cal = sub.add_parser("calendar", help="run the Canvas events → Google Calendar sync once, now")
     p_cal.add_argument("--print", action="store_true", help="print instead of texting")
+    p_ol = sub.add_parser("outlook", help="run the Outlook → Google Calendar sync once, now")
+    p_ol.add_argument("--print", action="store_true", help="print instead of texting")
 
     args = parser.parse_args(argv)
     handlers = {"courses": cmd_courses, "check": cmd_check, "sync": cmd_sync, "run": cmd_run, "chat": cmd_chat,
                 "brief": cmd_brief, "nudges": cmd_nudges, "gcal-auth": cmd_gcal_auth,
-                "browser-login": cmd_browser_login, "browser-check": cmd_browser_check, "gradescope": cmd_gradescope, "calendar": cmd_calendar}
+                "browser-login": cmd_browser_login, "browser-check": cmd_browser_check, "gradescope": cmd_gradescope, "calendar": cmd_calendar,
+                "outlook": cmd_outlook}
     return handlers[args.command](args)
 
 

@@ -330,6 +330,19 @@ class Store:
         raw = self.kv_get("pending_job")
         return json.loads(raw) if raw else None
 
+    JOB_LABELS = {"calendar_first_run": "canvas calendar", "gradescope_first_run": "gradescope", "outlook_new": "outlook"}
+
+    def proposal_slot(self, kind: str, digest: str) -> str:
+        """'free' (ask now), 'asked' (this very proposal is already out), or the label of another
+        job's proposal that must be answered first. One question at a time, so a bare yes can
+        never land on the wrong one."""
+        job = self.pending_job()
+        if job is None or job["kind"] == kind and job["payload"].get("digest") != digest:
+            return "free"                      # nothing out, or this job's own question has changed: replace it
+        if job["kind"] == kind:
+            return "asked"
+        return self.JOB_LABELS.get(job["kind"], job["kind"])
+
     def propose_job(self, kind: str, payload: dict, question: str, *, at: datetime | None = None) -> None:
         stamp = (at or datetime.now(timezone.utc)).isoformat(timespec="seconds")
         self.kv_set("pending_job", json.dumps({"kind": kind, "payload": payload, "question": question, "asked_at": stamp}))

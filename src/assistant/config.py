@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     telegram_chat_ids: str = ""            # comma-separated; empty = setup mode (/start reveals your id)
     openai_api_key: str = ""               # pydantic-ai reads OPENAI_API_KEY from the environment too
     ed_api_token: str = ""                 # edstem.org/us/settings/api-tokens
+    outlook_ics_url: str = ""              # Outlook web → Calendar → Shared calendars → Publish a calendar (a secret URL)
 
     @property
     def allowed_chat_ids(self) -> set[int]:
@@ -131,6 +132,11 @@ class CalendarSyncConfig(BaseModel):
     every_minutes: int = 60
 
 
+class OutlookConfig(BaseModel):
+    target: str = "Stanford"        # Google calendar that receives confirmed Outlook meetings
+    every_minutes: int = 10
+
+
 class AppConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     brief: BriefConfig = Field(default_factory=BriefConfig)
@@ -138,6 +144,7 @@ class AppConfig(BaseModel):
     sync: SyncConfig = Field(default_factory=SyncConfig)
     gradescope: GradescopeConfig = Field(default_factory=GradescopeConfig)
     calendar: CalendarSyncConfig = Field(default_factory=CalendarSyncConfig)
+    outlook: OutlookConfig = Field(default_factory=OutlookConfig)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:
