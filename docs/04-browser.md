@@ -85,3 +85,11 @@ hardening step, running as an unprivileged user with a seccomp profile, is on th
 3. `agent.py` — the six `browser_*` tools; note `requires_approval=True` on one of them.
 4. `chat.py` — `PendingApproval`, `_finish`, `_resume`: the pause and the yes/no.
 5. `tests/test_browser_real.py` — a real Chromium on a local page, no network.
+
+## Known notice
+
+Running the one-shot `assistant chat` command *inside the container* (Python 3.12) can print
+"Exception ignored in BaseSubprocessTransport.__del__ … Event loop is closed" after the
+answer. The browser has already been stopped by then; it's the interpreter finalizing
+Playwright's driver pipe in an unlucky order. The always-on `run` process doesn't exit, so it
+never shows this, and the same command on the Mac (Python 3.13) is clean. Ignore it.

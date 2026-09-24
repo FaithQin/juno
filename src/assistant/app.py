@@ -93,8 +93,8 @@ async def with_cleanup(ops, coro):
         if browser is not None:
             try:
                 await browser.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("browser stop failed: %r", e)
         import gc
 
         gc.collect()   # finalize Playwright's driver transport while the loop is still open (py3.12 prints a warning otherwise)

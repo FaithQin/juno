@@ -11,6 +11,7 @@ stay separate), one page at a time, closed when idle.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from dataclasses import dataclass
@@ -167,6 +168,8 @@ class BrowserSession:
         self._site: Site | None = None
         self._snap: Snapshot | None = None
         self.last_used = time.time()
+        self._start_lock: asyncio.Lock | None = None   # created lazily, on the running loop
+        self._op_lock: asyncio.Lock | None = None      # one browser action at a time
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -187,9 +190,15 @@ class BrowserSession:
                 pass
         self._contexts.clear()
         if self._browser:
-            await self._browser.close()
+            try:
+                await self._browser.close()
+            except Exception:
+                pass
         if self._pw:
-            await self._pw.stop()
+            try:
+                await self._pw.stop()   # always: this is what closes the driver process and its pipes
+            except Exception:
+                pass
         self._browser = self._pw = self._page = None
 
     async def close_idle(self, max_idle_seconds: int = 600) -> bool:
@@ -200,9 +209,20 @@ class BrowserSession:
             return True
         return False
 
+    def _locks(self) -> tuple[asyncio.Lock, asyncio.Lock]:
+        if self._start_lock is None:
+            self._start_lock, self._op_lock = asyncio.Lock(), asyncio.Lock()
+        return self._start_lock, self._op_lock
+
+    async def _ensure_started(self) -> None:
+        """Parallel tool calls must not race to launch Chromium: the loser would leak a driver."""
+        start_lock, _ = self._locks()
+        async with start_lock:
+            if self._browser is None:
+                await self.start()
+
     async def _context(self, site: Site | None):
-        if self._browser is None:
-            await self.start()
+        await self._ensure_started()
         key = site.key if site else "_public"
         if key not in self._contexts:
             state = session_path(self.data_dir, site) if site else None
@@ -228,6 +248,11 @@ class BrowserSession:
         ok, why = is_safe_url(url)
         if not ok:
             raise BrowserError(f"won't open {url}: {why}")
+        _, op_lock = self._locks()
+        async with op_lock:
+            return await self._open(url)
+
+    async def _open(self, url: str) -> Snapshot:
         site = site_for_url(url)
         ctx = await self._context(site)
         if self._page is not None:
@@ -240,7 +265,7 @@ class BrowserSession:
         await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         await self._settle()
         await self._save_state()
-        return await self.snapshot()
+        return await self._snapshot()
 
     async def _settle(self) -> None:
         try:
@@ -249,6 +274,11 @@ class BrowserSession:
             pass
 
     async def snapshot(self) -> Snapshot:
+        _, op_lock = self._locks()
+        async with op_lock:
+            return await self._snapshot()
+
+    async def _snapshot(self) -> Snapshot:
         if self._page is None:
             raise BrowserError("no page is open; use browse(url) first")
         page = self._page
@@ -278,29 +308,37 @@ class BrowserSession:
         return self._page.locator(f'[data-juno-ref="{ref}"]').first
 
     async def click(self, ref: int) -> Snapshot:
-        await self._locator(ref).click(timeout=10_000)
-        await self._settle()
-        await self._save_state()
-        return await self.snapshot()
+        _, op_lock = self._locks()
+        async with op_lock:
+            await self._locator(ref).click(timeout=10_000)
+            await self._settle()
+            await self._save_state()
+            return await self._snapshot()
 
     async def submit(self, ref: int) -> Snapshot:
         return await self.click(ref)
 
     async def type(self, ref: int, text: str) -> Snapshot:
-        await self._locator(ref).fill(text, timeout=10_000)
-        return await self.snapshot()
+        _, op_lock = self._locks()
+        async with op_lock:
+            await self._locator(ref).fill(text, timeout=10_000)
+            return await self._snapshot()
 
     async def select(self, ref: int, value: str) -> Snapshot:
-        loc = self._locator(ref)
-        try:
-            await loc.select_option(value, timeout=10_000)
-        except Exception:
-            await loc.select_option(label=value, timeout=10_000)
-        return await self.snapshot()
+        _, op_lock = self._locks()
+        async with op_lock:
+            loc = self._locator(ref)
+            try:
+                await loc.select_option(value, timeout=10_000)
+            except Exception:
+                await loc.select_option(label=value, timeout=10_000)
+            return await self._snapshot()
 
     async def back(self) -> Snapshot:
-        if self._page is None:
-            raise BrowserError("no page is open")
-        await self._page.go_back(wait_until="domcontentloaded", timeout=15_000)
-        await self._settle()
-        return await self.snapshot()
+        _, op_lock = self._locks()
+        async with op_lock:
+            if self._page is None:
+                raise BrowserError("no page is open")
+            await self._page.go_back(wait_until="domcontentloaded", timeout=15_000)
+            await self._settle()
+            return await self._snapshot()

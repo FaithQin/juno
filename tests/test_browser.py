@@ -45,3 +45,30 @@ def test_render_snapshot_says_when_login_is_needed():
     snap = Snapshot(url="https://login.stanford.edu/idp", title="Stanford Login", login_required=True, text="", elements=[])
     out = render_snapshot(snap, site_key="gradescope")
     assert out.startswith("login needed for gradescope. faith has to run on her mac: uv run assistant browser-login gradescope")
+
+
+import pytest
+
+
+@pytest.mark.anyio
+async def test_concurrent_starts_launch_exactly_one_browser(tmp_path, anyio_backend):
+    import asyncio
+
+    from assistant.browser import BrowserSession
+
+    session = BrowserSession(data_dir=tmp_path)
+    launches: list[int] = []
+
+    async def fake_start():
+        launches.append(1)
+        await asyncio.sleep(0.05)            # the real launch takes a while; the race window
+        session._browser = object()
+
+    session.start = fake_start
+    await asyncio.gather(session._ensure_started(), session._ensure_started(), session._ensure_started())
+    assert launches == [1]
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
