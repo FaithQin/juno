@@ -9,17 +9,12 @@ from .config import Settings, load_courses, project_root
 
 
 def run_one_shot(coro):
-    """Like asyncio.run, but leaves the loop open at exit. Playwright's driver transport is
-    finalized late by the interpreter; on Python 3.12 that prints 'Event loop is closed' if
-    the loop was already closed. A short-lived command doesn't need the loop closed."""
+    """asyncio.run, named for what it's used for. `with_cleanup` (app.py) stops the browser and
+    collects garbage before the loop closes, which is what keeps Playwright's driver from
+    printing an 'Event loop is closed' notice at exit on Python 3.12."""
     import asyncio
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.run_until_complete(loop.shutdown_asyncgens())
+    return asyncio.run(coro)
 
 
 def load_settings() -> Settings:
