@@ -35,6 +35,10 @@ class TodoistClient:
             raise LookupError(f"Expected exactly one project named {name!r}, found {len(matches)}")
         return matches[0]
 
+    def projects(self) -> list[Project]:
+        """Every project in the account (each has `parent_id`), for `check` and startup validation."""
+        return _flatten(self.api.get_projects())
+
     def sections(self, project_id: str) -> dict[str, Section]:
         """Section name → Section."""
         return {s.name: s for s in _flatten(self.api.get_sections(project_id=project_id))}
@@ -50,6 +54,23 @@ class TodoistClient:
         """All *active* tasks in the project (completed ones are not returned)."""
         return _flatten(self.api.get_tasks(project_id=project_id))
 
+    def tasks_in(self, project_ids: list[str]) -> list[Task]:
+        """Active tasks across several projects (Classes plus each course sub-project), each once.
+
+        One read per project, in the order given. With the parent first, a task moved from
+        Classes into a sub-project while this runs is seen in one place or both, never neither;
+        both is folded by id. A project that can't be read raises: skipping it would make every
+        task in it look completed to the sync.
+        """
+        seen: set[str] = set()
+        out: list[Task] = []
+        for pid in dict.fromkeys(project_ids):
+            for t in self.tasks(pid):
+                if t.id not in seen:
+                    seen.add(t.id)
+                    out.append(t)
+        return out
+
     def all_tasks(self) -> list[Task]:
         """Every active task in the account."""
         return _flatten(self.api.get_tasks())
@@ -63,7 +84,7 @@ class TodoistClient:
         query = " | ".join(labels[p] for p in range(4, min_api_priority - 1, -1))
         return _flatten(self.api.filter_tasks(query=query))
 
-    def add_task(self, *, content: str, description: str = "", project_id: str, section_id: str | None,
+    def add_task(self, *, content: str, description: str = "", project_id: str, section_id: str | None = None,
                  due_at: datetime | None = None, due_date: date | None = None, priority: int = 1) -> Task:
         kwargs: dict = dict(
             description=description, project_id=project_id, section_id=section_id, priority=priority,

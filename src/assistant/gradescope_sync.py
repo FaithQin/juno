@@ -20,6 +20,7 @@ from .config import CoursesConfig
 from .db import Store
 from .gradescope import BASE, match_courses, parse_course, parse_dashboard
 from .sync import adopt_by_title, adopt_links, apply_plan, format_report, iso, plan_sync
+from .tasks import course_of
 
 Send = Callable[[str], Awaitable[None]]
 JOB_KIND = "gradescope_first_run"
@@ -38,9 +39,10 @@ class GradescopeSync:
         self.todoist = todoist
         self.store = store
         self.courses_cfg = courses_cfg
-        self.project_id = project_id
-        self.section_ids = dict(sections)                               # section name → id
-        self.section_names = {v: k for k, v in sections.items()}        # id → name
+        self.project_id = project_id                                    # the parent, Classes
+        # Legacy sections inside Classes, {name: Section}. One cache for the job's lifetime:
+        # apply_plan adds any section it creates, so the next run reuses it instead of adding another.
+        self._sections = {name: SimpleNamespace(id=sid, name=name) for name, sid in sections.items()}
         self.tz = tz
         self.send = send
         self.now = now
@@ -79,8 +81,15 @@ class GradescopeSync:
 
     # -- the run ---------------------------------------------------------------
 
-    def _sections_cache(self) -> dict:
-        return {name: SimpleNamespace(id=sid, name=name) for name, sid in self.section_ids.items()}
+    def _read_ids(self) -> list[str]:
+        """Classes plus every course sub-project: moved tasks keep their id, so they're the same tasks."""
+        return self.courses_cfg.class_project_ids(self.project_id)
+
+    def _course_of(self, task) -> str | None:
+        """A task's course: its sub-project first, then its legacy section in Classes."""
+        live = {name: s.id for name, s in self._sections.items()}
+        by_section = {sid: code for code, sid in self.courses_cfg.course_sections(live).items()}
+        return course_of(task, sections=by_section, projects=self.courses_cfg.course_by_project())
 
     async def run(self, now: datetime | None = None, *, quiet: bool = False) -> str | None:
         """Sync once. Returns the text it sent (or would have sent, with quiet=True)."""
@@ -91,7 +100,7 @@ class GradescopeSync:
             return None if not quiet else LOGIN_NAG
         items, course_for = fetched
 
-        active = self.todoist.tasks(self.project_id)
+        active = self.todoist.tasks_in(self._read_ids())
         links = self.store.links()
         tasks = self.store.tasks()
         for link in adopt_links(active, items, links):
@@ -101,7 +110,7 @@ class GradescopeSync:
 
         if not self.store.kv_get("gradescope_first_run_done"):
             open_items = [it for it in items if it.due_at is not None and not it.submitted and it.key not in links]
-            task_course = {t.id: self.section_names.get(getattr(t, "section_id", None)) for t in active}
+            task_course = {t.id: self._course_of(t) for t in active}
             pairs = adopt_by_title(open_items, active, course_for=course_for, task_course=task_course)
             paired = {it.key for it, _ in pairs}
             new = [it for it in open_items if it.key not in paired]
@@ -133,7 +142,7 @@ class GradescopeSync:
 
         plan = plan_sync(items, course_for, links, tasks, tz=self.tz, complete_when_submitted=self.complete_when_submitted)
         report = apply_plan(plan, todoist=self.todoist, store=self.store, project_id=self.project_id,
-                            sections=self._sections_cache(), tz=self.tz, dry_run=False)
+                            sections=self._sections, tz=self.tz, dry_run=False)
         if report.changed or report.errors:
             text = "gradescope " + format_report(report)
             if not quiet:
@@ -181,7 +190,7 @@ class GradescopeSync:
         if new_items:
             plan = plan_sync(new_items, course_for, self.store.links(), self.store.tasks(), tz=self.tz)
             report = apply_plan(plan, todoist=self.todoist, store=self.store, project_id=self.project_id,
-                                sections=self._sections_cache(), tz=self.tz, dry_run=False)
+                                sections=self._sections, tz=self.tz, dry_run=False)
             added = len(report.created)
         n = len(payload.get("pairs", []))
         linked = f"linked {n} existing task{'s' if n != 1 else ''}"

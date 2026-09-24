@@ -45,21 +45,44 @@ def cmd_courses(_args) -> int:
     return 0
 
 
+def check_report(todoist, cfg) -> list[str]:
+    """What `assistant check` prints: the parent project (Classes), each course's own
+    sub-project (found, and under Classes?) or, for a course without one, its legacy section,
+    and the active tasks juno reads across all of them."""
+    project = todoist.project(project_id=cfg.todoist.project_id, name=cfg.todoist.project_name)
+    sections = todoist.sections(project.id)
+    by_id = {p.id: p for p in todoist.projects()}
+    lines = [f"todoist project: {project.name} ({project.id})"]
+    missing_sections = []
+    for c in cfg.courses:
+        if c.project_id:
+            sub = by_id.get(c.project_id)
+            if sub is None:
+                lines.append(f"{c.code}: sub-project {c.project_id} NOT FOUND")
+            elif getattr(sub, "parent_id", None) != project.id:
+                lines.append(f"{c.code}: sub-project {sub.name} ({sub.id}) is not under {project.name}")
+            else:
+                lines.append(f"{c.code}: sub-project {sub.name} ({sub.id}) ok")
+        elif c.section_name in sections:
+            lines.append(f"{c.code}: section {c.section_name} in {project.name} (legacy)")
+        else:
+            missing_sections.append(c.section_name)
+    read_ids = [pid for pid in cfg.class_project_ids(project.id) if pid == project.id or pid in by_id]
+    n_sub = len(read_ids) - 1
+    tasks = todoist.tasks_in(read_ids)
+    lines.append(f"active tasks: {len(tasks)} ({project.name} + {n_sub} course sub-project{'s' if n_sub != 1 else ''})")
+    if missing_sections:
+        lines.append(f"sections that will be created on first sync: {', '.join(missing_sections)}")
+    return lines
+
+
 def cmd_check(_args) -> int:
     from .todoist_client import TodoistClient
 
     settings = load_settings()
-    cfg = load_courses()
     todoist = TodoistClient(settings.todoist_token)
-    project = todoist.project(project_id=cfg.todoist.project_id, name=cfg.todoist.project_name)
-    sections = todoist.sections(project.id)
-    tasks = todoist.tasks(project.id)
-    print(f"todoist project: {project.name} ({project.id})")
-    print(f"sections: {', '.join(sorted(sections)) or '(none)'}")
-    print(f"active tasks: {len(tasks)}")
-    missing = [c.section_name for c in cfg.courses if c.section_name not in sections]
-    if missing:
-        print(f"sections that will be created on first sync: {', '.join(missing)}")
+    for line in check_report(todoist, load_courses()):
+        print(line)
     print(f"timezone: {settings.timezone}")
     return 0
 

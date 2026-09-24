@@ -38,3 +38,70 @@ def test_outlook_config_and_setting_defaults(monkeypatch):
     monkeypatch.setenv("CANVAS_TOKEN", "x")
     monkeypatch.setenv("TODOIST_TOKEN", "y")
     assert Settings(_env_file=None).outlook_ics_url == ""
+
+
+# --- per-course Todoist sub-projects (2026-09-24) ---------------------------------------
+
+import pytest
+from pydantic import ValidationError
+
+from assistant.config import CoursesConfig, load_courses
+
+REPO_COURSES = Path(__file__).resolve().parents[1] / "courses.yaml"
+
+
+def _cfg(courses, parent="CLASSES"):
+    return CoursesConfig.model_validate({"todoist": {"project_id": parent}, "courses": courses})
+
+
+def test_course_project_id_parses_and_defaults_to_none():
+    cfg = _cfg([{"code": "EE 100", "canvas_id": 232825, "project_id": "P-EE"}, {"code": "CME 102", "canvas_id": 232579}])
+    assert cfg.courses[0].project_id == "P-EE"
+    assert cfg.courses[1].project_id is None           # legacy: a section named after the course inside Classes
+
+
+def test_class_project_ids_is_parent_first_then_every_course_project_including_non_canvas():
+    cfg = _cfg([
+        {"code": "EE 100", "canvas_id": 232825, "project_id": "P-EE"},
+        {"code": "CME 102", "canvas_id": 232579},                        # legacy: no project to read
+        {"code": "CS 106B", "canvas_id": None, "project_id": "P-CS"},    # not on Canvas, still read
+    ])
+    assert cfg.class_project_ids("CLASSES") == ["CLASSES", "P-EE", "P-CS"]
+
+
+def test_course_by_project_and_course_projects():
+    cfg = _cfg([{"code": "EE 100", "project_id": "P-EE"}, {"code": "CME 102"}, {"code": "CS 106B", "project_id": "P-CS"}])
+    assert cfg.course_by_project() == {"P-EE": "EE 100", "P-CS": "CS 106B"}
+    assert cfg.course_projects() == {"EE 100": "P-EE", "CS 106B": "P-CS"}
+
+
+def test_course_sections_maps_live_section_ids_to_course_codes():
+    cfg = _cfg([{"code": "EE 100", "project_id": "P-EE"}, {"code": "CME 102", "section": "CME"}, {"code": "MATSCI 88Q"}])
+    live = {"EE 100": "S-EE", "CME": "S-CME", "General": "S-GEN"}          # section name → id, as Todoist lists them
+    assert cfg.course_sections(live) == {"EE 100": "S-EE", "CME 102": "S-CME"}   # keyed by code; non-course sections ignored
+
+
+def test_a_misspelled_course_key_fails_loudly_instead_of_falling_back_to_sections():
+    with pytest.raises(ValidationError):
+        _cfg([{"code": "EE 100", "projectid": "P-EE"}])
+
+
+def test_duplicate_course_projects_and_a_course_pointing_at_the_parent_are_rejected():
+    with pytest.raises(ValidationError):
+        _cfg([{"code": "EE 100", "project_id": "P-X"}, {"code": "EE 310", "project_id": "P-X"}])
+    with pytest.raises(ValidationError):
+        _cfg([{"code": "EE 100", "project_id": "CLASSES"}])
+
+
+def test_the_repo_courses_yaml_ships_every_course_with_its_sub_project():
+    cfg = load_courses(REPO_COURSES)
+    assert cfg.todoist.project_id == "6cXPJPmRH6GF2MPr"                # Classes stays the parent
+    assert cfg.course_projects() == {
+        "ENGR 40M": "6hcWWXF2wPQ63xGP",
+        "CME 102": "6hcWWXF7PMmh57v2",
+        "MATSCI 88Q": "6hcWWXGWxVCH6Hmc",
+        "EE 310": "6hcWWXFgVhMWm7fp",
+        "EE 100": "6hcWWXGX4RFgHc5C",
+        "CS 106B": "6hcWWXHRpx3H2RvF",
+    }
+    assert {c.code: c.canvas_id for c in cfg.courses}["CS 106B"] is None

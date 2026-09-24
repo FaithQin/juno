@@ -1,6 +1,12 @@
-# Which Canvas courses to sync, and which Todoist section each one lands in.
-# Section names default to the course code. Run `uv run assistant courses`
-# to list your active Canvas courses with their ids.
+# Which courses to sync, and where their tasks live in Todoist.
+#
+# `todoist.project_id` is the parent project, Classes. General class tasks (add/drop,
+# withdrawal deadlines) live there with no section. Each course has its own sub-project
+# under Classes (`project_id`, decided 2026-09-24; see docs/09-per-course-projects.md).
+# A course without `project_id` falls back to the old layout: a section named after the
+# course (or `section:`) inside Classes, created on the first sync if missing.
+# Keep the ids quoted. Run `uv run assistant courses` to list your Canvas course ids and
+# `uv run assistant check` to confirm every sub-project exists under Classes.
 
 todoist:
   project_id: "6cXPJPmRH6GF2MPr"   # "Classes", under Areas
@@ -9,14 +15,20 @@ todoist:
 courses:
   - code: "ENGR 40M"
     canvas_id: 231533
+    project_id: "6hcWWXF2wPQ63xGP"
   - code: "CME 102"
     canvas_id: 232579
+    project_id: "6hcWWXF7PMmh57v2"
   - code: "MATSCI 88Q"
     canvas_id: 232193
+    project_id: "6hcWWXGWxVCH6Hmc"
   - code: "EE 310"
     canvas_id: 230601
+    project_id: "6hcWWXFgVhMWm7fp"
   - code: "EE 100"
     canvas_id: 232825
+    project_id: "6hcWWXGX4RFgHc5C"
   - code: "CS 106B"
-    canvas_id: null          # not on Canvas; assignments come from the course site (phase 2)
+    canvas_id: null          # not on Canvas; assignments come from the course site and Gradescope
     website: "https://web.stanford.edu/class/cs106b/"
+    project_id: "6hcWWXHRpx3H2RvF"

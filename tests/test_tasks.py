@@ -75,3 +75,32 @@ def test_match_tasks_by_words_and_course():
     assert [t.id for t in match_tasks("cs106b assignment", tasks, sections=SECTIONS)] == ["T1", "T2"]
     assert [t.id for t in match_tasks("hw due dates", tasks, sections=SECTIONS)] == ["T3"]
     assert match_tasks("physics lab", tasks, sections=SECTIONS) == []
+
+
+# --- per-course sub-projects: project first, then legacy section, else none --------------
+
+PROJECTS = {"P-ENGR": "ENGR 40M", "P-CS": "CS 106B", "P-CME": "CME 102"}   # sub-project id → code
+
+
+def test_course_of_prefers_the_sub_project_then_the_legacy_section_else_none():
+    from assistant.tasks import course_of
+
+    in_project = FakeTask("T1", "Lab 1", project_id="P-CME")
+    in_section = FakeTask("T2", "Lab 2", project_id="CLASSES", section_id="S1")
+    both = FakeTask("T3", "Lab 3", project_id="P-CS", section_id="S1")        # a section she made inside the sub-project
+    general = FakeTask("T4", "Add/drop deadline", project_id="CLASSES")
+    elsewhere = FakeTask("T5", "Groceries", project_id="INBOX")
+    assert course_of(in_project, projects=PROJECTS, sections=SECTIONS) == "CME 102"
+    assert course_of(in_section, projects=PROJECTS, sections=SECTIONS) == "ENGR 40M"
+    assert course_of(both, projects=PROJECTS, sections=SECTIONS) == "CS 106B"
+    assert course_of(general, projects=PROJECTS, sections=SECTIONS) is None
+    assert course_of(elsewhere, projects=PROJECTS, sections=SECTIONS) is None
+    assert course_of(in_section, sections=SECTIONS) == "ENGR 40M"           # legacy callers pass sections only
+
+
+def test_due_task_and_match_use_the_sub_project_for_the_course():
+    t = FakeTask("T1", "Assignment 1 (Paperless)", FakeDue(date(2026, 10, 5)), project_id="P-CS")
+    assert due_task_from(t, tz=TZ, sections=SECTIONS, projects=PROJECTS).course == "CS 106B"
+    assert due_task_from(t, tz=TZ, sections=SECTIONS).course is None       # without the map it is general
+    tasks = [t, FakeTask("T2", "Pset 1", project_id="P-CME"), FakeTask("T3", "CS 106B: Assignment 2", section_id="S2")]
+    assert [x.id for x in match_tasks("cs106b assignment", tasks, sections=SECTIONS, projects=PROJECTS)] == ["T1", "T3"]

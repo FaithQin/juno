@@ -319,3 +319,73 @@ def test_sync_now_can_check_outlook_on_demand(tmp_path):
     assert ops.sync_now("outlook") == "outlook isn't connected (OUTLOOK_ICS_URL in .env)"
     ops.sync_outlook = lambda: "outlook: 1 upcoming meeting isn't on your google calendar yet.\n- x\nreply yes to add them, or no to skip these (i'll still ask about new ones)"
     assert ops.sync_now("outlook").startswith("outlook: 1 upcoming meeting")
+
+
+# --- per-course Todoist sub-projects (2026-09-24) -------------------------------------------
+# ENGR 40M and CS 106B have their own sub-projects; CME 102 has none yet (legacy section S3).
+
+COURSE_PROJECTS = {"ENGR 40M": "P-ENGR", "CS 106B": "P-CS"}
+
+
+def make_project_ops(tmp_path, tasks=None):
+    store = Store(tmp_path / "t.sqlite3")
+    todoist = FakeTodoist(deepcopy(tasks or []))
+    ops = ChatOps(store=store, todoist=todoist, calendar=FakeCalendar({}), tz=TZ, courses=COURSES,
+                  sections={"CME 102": "S3", "ENGR 40M": "S1"}, classes_project_id="CLASSES",
+                  calendar_names=["Stanford"], now=lambda: NOW, course_projects=COURSE_PROJECTS)
+    return ops, store, todoist
+
+
+MIXED = [
+    FakeTask("T1", "ENGR 40M: Sign up for a lab section", FakeDue(utc(2026, 9, 23, 19, 0)), 1, None, "P-ENGR"),  # moved
+    FakeTask("T2", "ENGR 40M quizzes 2–8", FakeDue(utc(2026, 9, 26, 6, 59)), 1, "S1"),                         # not moved yet
+    FakeTask("T3", "Assignment 1 (Paperless)", FakeDue(utc(2026, 10, 6, 6, 59)), 1, None, "P-CS"),             # no code in title
+    FakeTask("T4", "CME 102: Find HW due dates", FakeDue(date(2026, 9, 22)), 1, "S3"),                         # legacy course
+    FakeTask("T6", "Final Study List deadline", FakeDue(utc(2026, 10, 10, 0, 0)), 1, None),                    # general, Classes root
+]
+
+
+def test_due_tasks_read_the_course_sub_projects_and_attribute_by_project(tmp_path):
+    ops, *_ = make_project_ops(tmp_path, MIXED)
+    got = {d.content: d.course for d in ops.due_tasks()}
+    assert got == {
+        "ENGR 40M: Sign up for a lab section": "ENGR 40M",
+        "ENGR 40M quizzes 2–8": "ENGR 40M",
+        "Assignment 1 (Paperless)": "CS 106B",
+        "CME 102: Find HW due dates": "CME 102",
+        "Final Study List deadline": None,
+    }
+
+
+def test_course_overview_finds_a_sub_project_task_by_its_project(tmp_path):
+    ops, *_ = make_project_ops(tmp_path, MIXED)
+    assert ops.tasks_overview("all", course="cs106b").splitlines() == [
+        "cs 106b:", "- mon oct 5 11:59pm Assignment 1 (Paperless)"]
+
+
+def test_add_task_for_a_course_with_a_sub_project_goes_there_with_no_section(tmp_path):
+    ops, store, todoist = make_project_ops(tmp_path)
+    assert ops.add_task("lab report", due="2026-10-01", course="engr40m").startswith("added: ENGR 40M: lab report")
+    (t,) = todoist.all_tasks()
+    assert (t.project_id, t.section_id) == ("P-ENGR", None)
+
+
+def test_add_task_for_a_legacy_course_still_uses_its_section_in_classes(tmp_path):
+    ops, store, todoist = make_project_ops(tmp_path)
+    ops.add_task("pset 2", due="2026-10-01", course="cme102")
+    (t,) = todoist.all_tasks()
+    assert (t.project_id, t.section_id) == ("CLASSES", "S3")
+
+
+def test_complete_matches_a_sub_project_task_by_its_course(tmp_path):
+    ops, store, todoist = make_project_ops(tmp_path, MIXED)
+    assert "Assignment 1" in ops.complete_task("cs106b assignment 1")
+    assert todoist.get_task("T3").is_completed
+
+
+def test_undo_of_a_delete_restores_into_the_sub_project(tmp_path):
+    ops, store, todoist = make_project_ops(tmp_path, MIXED)
+    ops.delete_task("sign up for a lab section")
+    ops.undo()
+    (t,) = [t for t in todoist.all_tasks() if t.content == "ENGR 40M: Sign up for a lab section"]
+    assert (t.project_id, t.section_id) == ("P-ENGR", None)

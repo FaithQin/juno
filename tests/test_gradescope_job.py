@@ -122,3 +122,98 @@ async def test_waits_while_another_jobs_proposal_is_pending(tmp_path):
     store.propose_job("outlook_new", {"digest": "x"}, "outlook: 1 meeting. yes or no?", at=NOW)
     assert await job.run() is None and out.sent == [] and store.pending_job()["kind"] == "outlook_new"
     assert await job.run(quiet=True) == "gradescope: 1 open assignment to propose, once you've answered the outlook proposal"
+
+
+# --- per-course Todoist sub-projects (2026-09-24) -------------------------------------------
+
+PROJECT_COURSES = [{"code": "CME 102", "canvas_id": 232579, "project_id": "P-CME"},
+                   {"code": "CS 106B", "project_id": "P-CS"},
+                   {"code": "MATSCI 88Q", "canvas_id": 232193, "project_id": "P-MAT"}]
+PSET2 = COURSE.replace("<tbody>", """<tbody>
+<tr><th class="table--primaryLink"><button class="js-submitAssignment" data-assignment-id="8709893" data-assignment-title="Pset2">Pset2</button></th>
+  <td class="submissionStatus"><div class="submissionStatus--text">No Submission</div></td>
+  <td><time class="submissionTimeChart--dueDate" datetime="2026-10-08 23:59:00 -0700">Oct 08 at 11:59PM</time></td></tr>""", 1)
+
+
+class GrowingBrowser(FakeBrowser):
+    """CME 102 gains a second pset between the first and the second run."""
+
+    def __init__(self):
+        super().__init__()
+        self.runs = 0
+
+    async def html(self, url):
+        if url.endswith("gradescope.com/"):
+            self.runs += 1
+        if "/courses/1359455" in url and self.runs > 1:
+            self.opened.append(url)
+            return PSET2, False
+        return await super().html(url)
+
+
+def make_project_job(tmp_path, tasks, *, courses=None, sections=None, browser=None):
+    store = Store(tmp_path / "t.sqlite3")
+    todoist = FakeTodoist(tasks)
+    cfg = CoursesConfig.model_validate({"todoist": {"project_id": "CLASSES"}, "courses": courses or PROJECT_COURSES})
+    out = Outbox()
+    job = GradescopeSync(browser=browser or FakeBrowser(), todoist=todoist, store=store, courses_cfg=cfg,
+                         project_id="CLASSES", sections={"CME 102": "S3"} if sections is None else sections,
+                         tz=TZ, send=out, now=lambda: NOW)
+    return job, store, todoist, out
+
+
+async def test_new_gradescope_items_go_into_the_course_sub_project(tmp_path):
+    job, store, todoist, out = make_project_job(tmp_path, [])
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    (t,) = todoist.tasks("P-CME")
+    assert (t.content, t.section_id) == ("CME 102: Pset1 (Gradescope)", None)
+    assert todoist.tasks("CLASSES") == [] and todoist.sections_created == []
+
+
+async def test_first_run_pairs_a_hand_made_task_living_in_the_sub_project(tmp_path):
+    hand_made = FakeTask("T1", "CME 102: Pset 1 (Gradescope)", project_id="P-CME")
+    job, store, todoist, out = make_project_job(tmp_path, [hand_made])
+    await job.run()
+    assert "looks like a task you already have:\n- Pset1 → CME 102: Pset 1 (Gradescope)" in out.sent[0]
+    assert "new (i'd add" not in out.sent[0]
+
+
+async def test_first_run_mid_migration_pairs_a_task_still_in_the_old_section(tmp_path):
+    not_moved = FakeTask("T1", "CME 102: Pset 1 (Gradescope)", section_id="S3")     # CME has a project; task not moved yet
+    job, store, todoist, out = make_project_job(tmp_path, [not_moved])
+    await job.run()
+    assert "looks like a task you already have:\n- Pset1 → CME 102: Pset 1 (Gradescope)" in out.sent[0]
+
+
+async def test_a_hand_made_gradescope_link_in_a_sub_project_is_adopted_not_duplicated(tmp_path):
+    linked = FakeTask("T1", "pset one", project_id="P-CME",
+                      description="https://www.gradescope.com/courses/1359455/assignments/8709892")
+    job, store, todoist, out = make_project_job(tmp_path, [linked])
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert store.links()[("gradescope", 8709892)].task_id == "T1"
+    assert [t.id for t in todoist.all_tasks()] == ["T1"] and out.sent == []
+
+
+async def test_approving_the_first_run_creates_new_items_in_the_sub_project(tmp_path):
+    import json
+
+    job, store, todoist, out = make_project_job(tmp_path, [])
+    await job.run()
+    payload = json.loads(store.kv_get("pending_job"))["payload"]
+    assert await job.approve(payload, True) == "linked 0 existing tasks, added 1"
+    assert [(t.content, t.project_id, t.section_id) for t in todoist.all_tasks()] == [
+        ("CME 102: Pset1 (Gradescope)", "P-CME", None)]
+    assert todoist.sections_created == []
+
+
+async def test_a_legacy_course_section_is_created_once_across_runs(tmp_path):
+    legacy = [{"code": "CME 102", "canvas_id": 232579}]
+    job, store, todoist, out = make_project_job(tmp_path, [], courses=legacy, sections={}, browser=GrowingBrowser())
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    await job.run()                                   # Pset2 appears: must reuse the section made on run 1
+    assert [t.content for t in todoist.tasks("CLASSES")] == ["CME 102: Pset1 (Gradescope)", "CME 102: Pset2 (Gradescope)"]
+    assert todoist.sections_created == [("CLASSES", "CME 102")]
+    assert {t.section_id for t in todoist.tasks("CLASSES")} == {"S-CME 102"}

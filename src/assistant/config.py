@@ -2,7 +2,8 @@
 
 Two sources:
   * `.env`          secrets and behaviour flags (loaded by pydantic-settings)
-  * `courses.yaml`  which Canvas courses to sync and where they go in Todoist
+  * `courses.yaml`  which courses to sync, the parent Todoist project (Classes) and
+                    each course's own sub-project under it (docs/09-per-course-projects.md)
 
 Everything is relative to the project folder. `uv run assistant ...` from that
 folder just works; on a server set ASSISTANT_HOME to point at it.
@@ -15,7 +16,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -71,9 +72,14 @@ class Settings(BaseSettings):
 
 
 class Course(BaseModel):
-    code: str                      # "ENGR 40M" — also the default Todoist section name
+    # A misspelled key (`projectid:`) must fail loudly: ignored, it would quietly send the
+    # course back to the legacy section path and re-create a section Faith removed.
+    model_config = ConfigDict(extra="forbid")
+
+    code: str                      # "ENGR 40M"; also the legacy section name
     canvas_id: int | None = None   # None for courses that don't live on Canvas
-    section: str | None = None     # override the Todoist section name
+    project_id: str | None = None  # the course's own Todoist sub-project under Classes
+    section: str | None = None     # legacy (no project_id): override the section name inside Classes
     website: str | None = None     # public course site to scrape (phase 2)
 
     @property
@@ -82,6 +88,9 @@ class Course(BaseModel):
 
 
 class TodoistConfig(BaseModel):
+    """The parent project (Classes). General class tasks live here with no section,
+    and so does every course that has no `project_id` of its own (one section each)."""
+
     project_id: str | None = None
     project_name: str = "Classes"
 
@@ -90,8 +99,50 @@ class CoursesConfig(BaseModel):
     todoist: TodoistConfig = Field(default_factory=TodoistConfig)
     courses: list[Course] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _distinct_projects(self) -> "CoursesConfig":
+        seen: dict[str, str] = {}
+        for c in self.courses:
+            if c.project_id is None:
+                continue
+            if c.project_id == self.todoist.project_id:
+                raise ValueError(f"{c.code}: project_id is the parent project; give it its own sub-project")
+            if c.project_id in seen:
+                raise ValueError(f"{c.code} and {seen[c.project_id]} share project_id {c.project_id}")
+            seen[c.project_id] = c.code
+        return self
+
     def by_canvas_id(self) -> dict[int, Course]:
         return {c.canvas_id: c for c in self.courses if c.canvas_id is not None}
+
+    def course_projects(self) -> dict[str, str]:
+        """Course code → its sub-project id (courses with one)."""
+        return {c.code: c.project_id for c in self.courses if c.project_id}
+
+    def course_by_project(self) -> dict[str, str]:
+        """Sub-project id → course code. The parent is never in here: its tasks are general."""
+        return {pid: code for code, pid in self.course_projects().items()}
+
+    def class_project_ids(self, parent_id: str) -> list[str]:
+        """Every project that holds class tasks: the parent first, then each course's sub-project.
+
+        Built from *all* courses, not just Canvas ones (CS 106B has no canvas_id). The parent
+        comes first so a task moved from Classes into a sub-project mid-read is still seen once.
+        The parent id is an argument because `todoist.project_id` may be None (found by name).
+        """
+        out = [parent_id]
+        for c in self.courses:
+            if c.project_id and c.project_id not in out:
+                out.append(c.project_id)
+        return out
+
+    def course_sections(self, section_ids: dict[str, str]) -> dict[str, str]:
+        """Course code → id of its legacy section in the parent, from Todoist's {name: id}.
+
+        Covers every course, with or without a project: mid-migration some tasks still sit in
+        the old sections and must be attributed to their course.
+        """
+        return {c.code: section_ids[c.section_name] for c in self.courses if c.section_name in section_ids}
 
 
 def parse_chat_ids(raw: str) -> set[int]:

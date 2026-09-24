@@ -421,8 +421,20 @@ class Report:
         return bool(self.created or self.joined or self.due_updated or self.completed or self.progress)
 
 
+def _destination(course: Course, *, todoist, project_id: str, sections: dict) -> tuple[str, str | None]:
+    """Where a new task for this course goes: its own sub-project with no section, or (legacy,
+    no project_id) the course's section inside the parent, created if missing. A course with a
+    project never touches sections, so the old ones stay gone once removed."""
+    if course.project_id:
+        return course.project_id, None
+    return project_id, todoist.ensure_section(project_id, course.section_name, sections).id
+
+
 def apply_plan(plan: Plan, *, todoist, store: Store, project_id: str, sections: dict, tz: ZoneInfo,
                dry_run: bool) -> Report:
+    """`project_id` is the parent (Classes); `sections` is the legacy {name: Section} cache for
+    courses without a sub-project, and gains any section created here. Only creates choose a
+    place: joins, due updates, completes and progress address tasks by id and never move them."""
     report = Report(dry_run=dry_run, notes=list(plan.notes))
     for s in plan.skips:
         report.skipped[s.reason] += 1
@@ -431,10 +443,11 @@ def apply_plan(plan: Plan, *, todoist, store: Store, project_id: str, sections: 
         label = f"{c.content} (due {fmt_due(c.due_at, tz, True)})"
         try:
             if not dry_run:
-                section = todoist.ensure_section(project_id, c.course.section_name, sections)
+                dest_project, dest_section = _destination(c.course, todoist=todoist, project_id=project_id,
+                                                          sections=sections)
                 task = todoist.add_task(
-                    content=c.content, description=c.description, project_id=project_id,
-                    section_id=section.id, due_at=c.due_at,
+                    content=c.content, description=c.description, project_id=dest_project,
+                    section_id=dest_section, due_at=c.due_at,
                 )
                 store.upsert_task(
                     task.id, batch_key=c.key if c.is_batch else None, managed=True, content=c.content,
@@ -561,21 +574,65 @@ def format_report(r: Report) -> str:
 # orchestration
 # --------------------------------------------------------------------------
 
-def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = False) -> Report:
+def reconcile_tasks(active, tasks: dict[str, TaskRow], links: dict[tuple[str, int], ItemLink], store: Store, *,
+                    dry_run: bool) -> None:
+    """Bring the remembered task rows in line with what is active in the class projects.
+
+    `active` must be the union of Classes and every course sub-project: a task the orchestrator
+    moved between them is the same task (same id), still open. Three rules:
+      * new active task → remember it, open;
+      * remembered open task no longer active anywhere we read → completed or deleted in
+        Todoist; either way, leave it be;
+      * remembered *completed* task that is active again → open again (heals a row that a
+        read which missed it wrongly closed), unless every Canvas item linked to it is already
+        recorded submitted: that is a task the sync ticked and Faith reopened on purpose, and
+        re-opening the row would make the next sync tick it again.
+    """
+    submitted: dict[str, list[bool]] = defaultdict(list)
+    for link in links.values():
+        submitted[link.task_id].append(link.submitted)
+
+    active_ids = {t.id for t in active}
+    for t in active:
+        row = tasks.get(t.id)
+        if row is None:
+            tasks[t.id] = TaskRow(t.id, None, False, t.content, t.description, _task_due_iso(t), False)
+            if not dry_run:
+                store.upsert_task(t.id, batch_key=None, managed=False, content=t.content,
+                                  description=t.description, due_at=_task_due_iso(t), completed=False)
+        elif row.completed and not (submitted.get(t.id) and all(submitted[t.id])):
+            row.completed = False
+            if not dry_run:
+                store.upsert_task(t.id, batch_key=None, managed=row.managed, content=row.content,
+                                  description=row.description, due_at=row.due_at, completed=False)
+    for tid, row in tasks.items():
+        if tid not in active_ids and not row.completed:
+            row.completed = True  # completed or deleted in Todoist; either way, leave it be
+            if not dry_run:
+                store.upsert_task(tid, batch_key=None, managed=row.managed, content=row.content,
+                                  description=row.description, due_at=row.due_at, completed=True)
+
+
+def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = False,
+             todoist=None, canvas=None, store: Store | None = None) -> Report:
+    """One Canvas → Todoist pass. `todoist`, `canvas` and `store` default to the real ones
+    (tests pass fakes)."""
     from .canvas_client import CanvasClient
     from .todoist_client import TodoistClient
 
-    store = Store(settings.db_path)
+    store = store or Store(settings.db_path)
     run_id = store.start_run("sync")
     try:
-        canvas = CanvasClient(settings.canvas_url, settings.canvas_token)
-        todoist = TodoistClient(settings.todoist_token)
+        canvas = canvas or CanvasClient(settings.canvas_url, settings.canvas_token)
+        todoist = todoist or TodoistClient(settings.todoist_token)
 
         project = todoist.project(project_id=courses_cfg.todoist.project_id, name=courses_cfg.todoist.project_name)
-        sections = todoist.sections(project.id)
-        active = todoist.tasks(project.id)
+        sections = todoist.sections(project.id)          # legacy: courses without a sub-project file here
+        read_ids = courses_cfg.class_project_ids(project.id)
+        active = todoist.tasks_in(read_ids)              # Classes plus every course sub-project
         if verbose:
-            print(f"todoist: project {project.name!r} ({project.id}), {len(sections)} sections, {len(active)} active tasks")
+            print(f"todoist: {project.name!r} ({project.id}) + {len(read_ids) - 1} course sub-projects, "
+                  f"{len(sections)} legacy sections, {len(active)} active tasks")
 
         by_id = courses_cfg.by_canvas_id()
         items: list[CanvasItem] = []
@@ -585,7 +642,7 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
                 print(f"canvas: {course.code} ({cid}) → {len(got)} items")
             items.extend(got)
 
-        # adopt hand-made tasks, and treat tasks no longer active as completed
+        # adopt hand-made tasks, then line the remembered rows up with what is active
         links = store.links()
         tasks = store.tasks()
         for link in adopt_links(active, items, links):
@@ -593,19 +650,7 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
             if not dry_run:
                 store.link(link.kind, link.canvas_id, link.course_id, link.task_id, adopted=True,
                            name=link.name, due_at=link.due_at, submitted=link.submitted)
-        active_ids = {t.id for t in active}
-        for t in active:
-            if t.id not in tasks:
-                tasks[t.id] = TaskRow(t.id, None, False, t.content, t.description, _task_due_iso(t), False)
-                if not dry_run:
-                    store.upsert_task(t.id, batch_key=None, managed=False, content=t.content,
-                                      description=t.description, due_at=_task_due_iso(t), completed=False)
-        for tid, row in tasks.items():
-            if tid not in active_ids and not row.completed:
-                row.completed = True  # completed or deleted in Todoist; either way, leave it be
-                if not dry_run:
-                    store.upsert_task(tid, batch_key=None, managed=row.managed, content=row.content,
-                                      description=row.description, due_at=row.due_at, completed=True)
+        reconcile_tasks(active, tasks, links, store, dry_run=dry_run)
 
         plan = plan_sync(
             items, by_id, links, tasks, tz=settings.tz,

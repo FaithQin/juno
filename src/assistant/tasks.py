@@ -29,7 +29,19 @@ def normalize_course(text: str, courses: list[str]) -> str | None:
     return None
 
 
-def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str]) -> DueTask | None:
+def course_of(task, *, sections: dict[str, str] | None = None, projects: dict[str, str] | None = None) -> str | None:
+    """Which course a task belongs to: its course sub-project first, then its legacy section
+    in Classes, else None (general, e.g. the add/drop deadline in the Classes root).
+
+    `projects` maps sub-project id → code, `sections` maps legacy section id → code. The project
+    wins, so a section Faith later makes *inside* a course sub-project still reads as that course.
+    """
+    code = (projects or {}).get(getattr(task, "project_id", None))
+    return code or (sections or {}).get(getattr(task, "section_id", None))
+
+
+def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str],
+                  projects: dict[str, str] | None = None) -> DueTask | None:
     """Todoist task → DueTask, or None when it has no due date.
 
     Todoist due dates come in three shapes: a date (no time), a naive datetime
@@ -55,13 +67,13 @@ def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str]) -> DueTask | 
         content=task.content,
         due_at=due_at,
         priority=getattr(task, "priority", 1) or 1,
-        course=sections.get(getattr(task, "section_id", None)),
+        course=course_of(task, sections=sections, projects=projects),
         created_at=created,
         has_time=has_time,
     )
 
 
-def match_tasks(query: str, tasks: list, *, sections: dict[str, str]) -> list:
+def match_tasks(query: str, tasks: list, *, sections: dict[str, str], projects: dict[str, str] | None = None) -> list:
     """Every task whose title (plus course) contains every word of the query.
 
     Short or numeric words ("1", "a1") must match a whole token, so
@@ -74,7 +86,7 @@ def match_tasks(query: str, tasks: list, *, sections: dict[str, str]) -> list:
         return []
     out = []
     for t in tasks:
-        course = sections.get(getattr(t, "section_id", None)) or ""
+        course = course_of(t, sections=sections, projects=projects) or ""
         hay = f"{t.content} {course}".lower()
         tokens = set(re.findall(r"[a-z0-9]+", hay))
         squashed = _squash(hay)

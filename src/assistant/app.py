@@ -122,7 +122,8 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
 
     ops = ChatOps(
         store=store, todoist=todoist, calendar=calendar, tz=settings.tz,
-        courses=[c.code for c in courses_cfg.courses], sections=sections,
+        courses=[c.code for c in courses_cfg.courses], sections=courses_cfg.course_sections(sections),
+        course_projects=courses_cfg.course_projects(),
         classes_project_id=project.id, calendar_names=app_cfg.brief.calendars, now=now_utc,
         web=WebReader(canvas_url=settings.canvas_url, canvas_token=settings.canvas_token),
         browser=BrowserSession(data_dir=project_root() / "data", headless=True),   # starts on first use

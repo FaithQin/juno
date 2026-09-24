@@ -33,7 +33,8 @@ DUE_ERROR = "error: due must be an ISO date (2026-09-28) or datetime (2026-09-28
 class ChatOps:
     def __init__(self, *, store: Store, todoist, calendar, tz: ZoneInfo, courses: list[str],
                  sections: dict[str, str], classes_project_id: str, calendar_names: list[str],
-                 now: Callable[[], datetime], web=None, browser=None, ed=None):
+                 now: Callable[[], datetime], web=None, browser=None, ed=None,
+                 course_projects: dict[str, str] | None = None):
         self.web = web                        # WebReader, or None when links can't be opened
         self.browser = browser                # BrowserSession, or None when there is no browser
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
@@ -46,9 +47,15 @@ class ChatOps:
         self.calendar = calendar
         self.tz = tz
         self.courses = list(courses)
+        # Legacy layout: a course's section inside Classes. Kept for courses without a sub-project,
+        # and so tasks not yet moved out of an old section still read as their course.
         self.section_by_course = dict(sections)                       # "CME 102" → section id
         self.course_by_section = {v: k for k, v in sections.items()}  # section id → "CME 102"
+        # Each course's own sub-project under Classes (docs/09-per-course-projects.md).
+        self.project_by_course = dict(course_projects or {})          # "CME 102" → sub-project id
+        self.course_by_project = {v: k for k, v in self.project_by_course.items()}
         self.classes_project_id = classes_project_id
+        self.class_project_ids = list(dict.fromkeys([classes_project_id, *self.project_by_course.values()]))
         self.calendar_names = list(calendar_names)
         self.now = now
 
@@ -95,7 +102,7 @@ class ChatOps:
     def _candidates(self) -> list:
         seen: set[str] = set()
         out = []
-        for t in list(self.todoist.tasks(self.classes_project_id)) + list(self.todoist.priority_tasks(MIN_PRIORITY_ELSEWHERE)):
+        for t in list(self.todoist.tasks_in(self.class_project_ids)) + list(self.todoist.priority_tasks(MIN_PRIORITY_ELSEWHERE)):
             if t.id in seen:
                 continue
             seen.add(t.id)
@@ -104,12 +111,12 @@ class ChatOps:
 
     def due_tasks(self) -> list[DueTask]:
         """Classes plus p1/p2 anywhere: what the nudges and the chat cover."""
-        out = [d for d in (due_task_from(t, tz=self.tz, sections=self.course_by_section) for t in self._candidates()) if d]
+        out = [d for d in (due_task_from(t, tz=self.tz, sections=self.course_by_section, projects=self.course_by_project) for t in self._candidates()) if d]
         return sorted(out, key=lambda d: d.due_at)
 
     def all_due_tasks(self) -> list[DueTask]:
         """Every dated task in the account: what the morning brief covers."""
-        out = [d for d in (due_task_from(t, tz=self.tz, sections=self.course_by_section) for t in self.todoist.all_tasks()) if d]
+        out = [d for d in (due_task_from(t, tz=self.tz, sections=self.course_by_section, projects=self.course_by_project) for t in self.todoist.all_tasks()) if d]
         return sorted(out, key=lambda d: d.due_at)
 
     def tasks_overview(self, scope: str, course: str | None = None) -> str:
@@ -219,16 +226,21 @@ class ChatOps:
             return parsed
         due_at, due_date = parsed
         content = f"{code}: {title}" if title else code
+        if code in self.project_by_course:          # the course's own sub-project, no section
+            project_id, section_id = self.project_by_course[code], None
+        else:                                       # legacy: its section inside Classes
+            project_id, section_id = self.classes_project_id, self.section_by_course.get(code)
         task = self.todoist.add_task(
-            content=content, description=notes or "", project_id=self.classes_project_id,
-            section_id=self.section_by_course.get(code), due_at=due_at, due_date=due_date, priority=1,
+            content=content, description=notes or "", project_id=project_id,
+            section_id=section_id, due_at=due_at, due_date=due_date, priority=1,
         )
         self.store.log_action("add_task", {"task_id": task.id, "content": content}, at=self.now())
         when = self._when(due_at or due_date) if (due_at or due_date) else "no date"
         return f"added: {content} ({when})"
 
     def _pick(self, query: str) -> object | str:
-        matches = match_tasks(query, self._candidates(), sections=self.course_by_section)
+        matches = match_tasks(query, self._candidates(), sections=self.course_by_section,
+                              projects=self.course_by_project)
         if not matches:
             return f"no task matches '{query}'"
         if len(matches) > 1:

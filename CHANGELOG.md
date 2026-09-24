@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-24 (night, latest)
+- Each class is now its own Todoist sub-project under Classes (Faith's ask). juno reads class tasks from Classes plus
+  every course sub-project (task ids survive a move, so nothing is re-created or wrongly closed; a row a read missed
+  heals when the task shows up again), files new Canvas/Gradescope/chat tasks into the course sub-project with no
+  section, attributes a task's course by sub-project first and old section second, and `assistant check` reports each
+  sub-project. A course without `project_id` keeps the old section layout. Gradescope's legacy section is now created
+  once, not once per run. `docs/09-per-course-projects.md`. 226 tests.
+
 ## 2026-09-24 (night, later)
 - Phase 7: Outlook meetings → Google Calendar from a published Outlook calendar link (ICS), every 10 min: new items
   (incl. tentative invites) proposed over Telegram, matched against hand-made events, series copied with their rules,

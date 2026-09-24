@@ -1,9 +1,10 @@
-"""In-memory stand-ins for Todoist and Google Calendar so tests never touch the network."""
+"""In-memory stand-ins for Todoist, Canvas and Google Calendar so tests never touch the network."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 
 from assistant.brief import Event
 
@@ -29,16 +30,49 @@ class FakeTask:
 
 
 class FakeTodoist:
-    """Mimics the subset of TodoistClient that ChatOps uses."""
+    """Mimics TodoistClient: the reads and writes ChatOps, the syncs and `check` use.
 
-    def __init__(self, tasks: list[FakeTask] | None = None):
+    Like the real API, `tasks(project_id)` returns only tasks directly in that project, so a
+    reader that forgets a course sub-project really does miss its tasks here too.
+    `projects` are (id, name, parent_id); `sections` are {project id: {section name: id}}.
+    """
+
+    def __init__(self, tasks: list[FakeTask] | None = None, *, projects: list[tuple[str, str, str | None]] | None = None,
+                 sections: dict[str, dict[str, str]] | None = None):
         self._tasks: dict[str, FakeTask] = {t.id: t for t in (tasks or [])}
+        self._projects = [SimpleNamespace(id=i, name=n, parent_id=parent) for i, n, parent in
+                          (projects or [("CLASSES", "Classes", None)])]
+        self._sections: dict[str, dict[str, str]] = {pid: dict(v) for pid, v in (sections or {}).items()}
         self.deleted: list[str] = []
+        self.sections_created: list[tuple[str, str]] = []     # every (project, name) ensure_section had to add
         self._n = 100
 
     # reads
+    def projects(self) -> list[SimpleNamespace]:
+        return list(self._projects)
+
+    def project(self, *, project_id: str | None = None, name: str = "Classes") -> SimpleNamespace:
+        for p in self._projects:
+            if (project_id and p.id == project_id) or (not project_id and p.name.lower() == name.lower()):
+                return p
+        raise LookupError(f"No Todoist project {project_id or name!r}")
+
+    def sections(self, project_id: str) -> dict[str, SimpleNamespace]:
+        return {n: SimpleNamespace(id=sid, name=n) for n, sid in self._sections.get(project_id, {}).items()}
+
     def tasks(self, project_id: str) -> list[FakeTask]:
         return [t for t in self._tasks.values() if t.project_id == project_id and not t.is_completed]
+
+    def tasks_in(self, project_ids: list[str]) -> list[FakeTask]:
+        """Same contract as TodoistClient.tasks_in; goes through self.tasks so tests can make it fail."""
+        seen: set[str] = set()
+        out = []
+        for pid in dict.fromkeys(project_ids):
+            for t in self.tasks(pid):
+                if t.id not in seen:
+                    seen.add(t.id)
+                    out.append(t)
+        return out
 
     def all_tasks(self) -> list[FakeTask]:
         return [t for t in self._tasks.values() if not t.is_completed]
@@ -50,10 +84,17 @@ class FakeTodoist:
         return self._tasks[task_id]
 
     def ensure_section(self, project_id, name, cache):
-        from types import SimpleNamespace
         if name not in cache:
             cache[name] = SimpleNamespace(id=f"S-{name}", name=name)
+            self._sections.setdefault(project_id, {})[name] = cache[name].id
+            self.sections_created.append((project_id, name))
         return cache[name]
+
+    # the orchestrator's move (juno never moves tasks): same id, new place
+    def move(self, task_id, *, project_id, section_id=None):
+        t = self._tasks[task_id]
+        t.project_id, t.section_id = project_id, section_id
+        return t
 
     # writes
     def add_task(self, *, content, description="", project_id, section_id=None, due_at=None, due_date=None, priority=1):
@@ -93,6 +134,16 @@ class FakeTodoist:
         self.deleted.append(task_id)
         self._tasks.pop(task_id, None)
         return True
+
+
+class FakeCanvas:
+    """CanvasClient.items_for_course over a fixed list of CanvasItems."""
+
+    def __init__(self, items=()):
+        self.items = list(items)
+
+    def items_for_course(self, course_id: int):
+        return [it for it in self.items if it.course_id == course_id]
 
 
 class FakeCalendar:

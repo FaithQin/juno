@@ -184,3 +184,16 @@ Faith's answers, in her words where possible.
 | Attendees | never invited on Google (that would email them); not in the feed anyway |
 | Cancellations | never deleted; a vanished meeting is reported once, she says "delete it" if she wants |
 | Canvas browsing | **stays off**; Faith will name the Canvas pages she still needs (grades? modules? files?) and they become API tools |
+
+## Per-course Todoist sub-projects (2026-09-24, night)
+
+Faith, from the Stanford session: "i want each class as a separate subproject under class not to be
+shoved all underneath classes". Asked how to handle juno, she chose **update both** (Todoist and juno).
+
+| Decision | Choice |
+|---|---|
+| Layout | **each class is its own sub-project under Classes** (ENGR 40M, CS 106B, CME 102, MATSCI 88Q, EE 100, EE 310); ids in `courses.yaml` |
+| General class tasks | stay in the Classes root with no section (add/drop and withdrawal deadlines) |
+| Old sections | tasks moved (same ids) into the sub-projects, then the empty sections removed |
+| New work | Canvas, Gradescope and chat-added course tasks go into the course sub-project, no section |
+| A course without `project_id` | **default (mine):** keeps the old layout (a section inside Classes), so an old config still works |
