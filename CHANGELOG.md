@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-24 (night)
+- Cost: the clock moved from the instructions onto each user message so OpenAI's prompt cache hits (measured 73% of
+  input from cache right after); previous turns are re-sent without tool traffic or reasoning; `openai_reasoning_context`
+  current_turn and a prompt cache key; `/status` shows today's requests, input tokens and cache share.
+- Proposals (calendar, gradescope) are asked once instead of every run; a stale bare "ok" no longer approves one;
+  `answer_proposal` tool and the pending question in the model's context.
+- Transient Todoist/Canvas errors are retried (`retry.py`); the morning brief waits ~10 min then texts one line.
+- Telegram photos reach the model as images (older photos thin out of history).
+- Canvas links go through the API, never the browser (no more daily Canvas re-logins); persona: learn from corrections.
+- Docs: `docs/07-hardening.md`. Tests: 167.
+
 ## 2026-09-24
 - Phase 6: completion tracking inside batch tasks (✅ per submitted quiz, "progress" notes), `sync_now` chat tool
   ("i finished quiz 3" → check Canvas/Gradescope now), manual `assistant sync` texts its changes; standing rule that

@@ -152,3 +152,20 @@ Secrets in `.env` with 600 permissions, never committed. Daily token budget once
 | Completed work | syncs tick the Todoist task when Canvas/Gradescope show a submission (already true); **quizzes finished inside a batch get a ✅ on their checklist line** and a "progress" note |
 | On demand | `sync_now` tool: "i finished quiz 3" → juno checks Canvas/Gradescope right then and reports |
 | Every edit is reported | **standing rule**: any write by juno or a sync (add, complete, move, edit, link, delete) is echoed in chat or texted by the sync. No silent changes |
+
+## 2026-09-24 (night): after a day of real use
+
+Faith's message that evening: $5 of OpenAI in one day, Canvas re-login, photos ignored, juno
+browsing Canvas for the calendar, "can it learn my preferences", and Outlook invites → Google
+Calendar. All of the following are **default (mine)** except where marked; each is one line to change.
+
+| Decision | Choice |
+|---|---|
+| Unanswered proposals | **asked once**; repeated only if Canvas/Gradescope changes what's proposed |
+| A bare yes/no after other chat | goes to normal chat; the proposal stays visible to the model and `answer_proposal` handles a clear answer |
+| Transient upstream errors | retried with backoff; the brief waits ~10 min then says it's skipping; nudges/sync retry twice |
+| Cost | clock moves out of the instructions onto her message (cacheable prefix); previous turns re-sent as conversation only; reasoning context `current_turn`; cache key `juno`. **History window stays 24 h** (Faith to decide whether to shorten; see HANDOFF) |
+| Photos | **on**: sent to the model as images; the last 3 photo messages stay attached, older ones become a note |
+| Canvas in the browser | **never**: the API token covers tasks, events and links; no Canvas re-logins |
+| Learning preferences | persona rule: corrections are saved with `remember` unprompted; the fact list is in every prompt |
+| Outlook → Google Calendar | **not started**: needs Faith's answers (see HANDOFF → scoping questions) |

@@ -51,10 +51,13 @@ the prompt:
 
 ## Two things the model must never be trusted with
 
-1. **The time.** `context_block()` injects "now: wed sep 23, 10:00am (america/los_angeles)"
-   every run. The persona tells the model to convert "thu 11:59" into ISO for the tools.
-   The tools validate the ISO and return an error string if it's wrong; pydantic-ai lets
-   the model retry with the error in view.
+1. **The time.** Every user message is stamped as it is stored: "[wed sep 23, 10:00am] hi".
+   The timezone sits in `context_block()`, which otherwise holds only things that change rarely
+   (courses, remembered facts), so the instructions stay identical between requests and the
+   provider's prompt cache can serve them (see `docs/07-hardening.md` for why that matters). The
+   persona tells the model to convert "thu 11:59" into ISO for the tools. The tools validate the
+   ISO and return an error string if it's wrong; pydantic-ai lets the model retry with the error
+   in view.
 2. **Facts.** The persona says "never invent a due date, a task, or an event". Every
    answer about what's due comes from a tool result. Poke's worst reviews were about
    hallucinated calendar entries and wrong weekdays; this design makes both structural
@@ -63,7 +66,9 @@ the prompt:
 ## Memory, in three layers
 
 - **Conversation**: `messages` table, pydantic-ai's own JSON. `ChatSession` loads the
-  last 24 hours (your choice) and appends what's new after each run.
+  last 24 hours (your choice) and appends what's new after each run. Earlier turns are re-sent
+  as conversation only (what you said, what juno said): their tool calls, tool output and
+  reasoning are dropped, and photos older than the last three become a note.
 - **Facts**: the `facts` table. "remember my lab is tuesday" → `remember()` → included in
   every prompt under "things faith told me to remember". `forget()` removes one.
 - **Truth**: Todoist and Google Calendar. juno reads them fresh every time rather than
