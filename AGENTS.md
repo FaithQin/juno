@@ -1,5 +1,9 @@
 # Working on juno (read this first, whichever agent you are)
 
+> **Non-negotiable, for every agent and every session:** before you finish, update `HANDOFF.md`
+> to match reality, add a dated line to `CHANGELOG.md`, commit, and push to `origin/main`.
+> Work that isn't in those files and on GitHub doesn't exist to the next agent.
+
 juno is Faith's personal AI assistant: Canvas and Gradescope → Todoist, Canvas events → Google
 Calendar, a Telegram chat brain with a real browser, nudges and a morning brief. Python 3.13, `uv`.
 
@@ -31,5 +35,8 @@ ssh root@165.232.146.165 'cd /opt/juno && docker compose logs -f juno'
 Server: DigitalOcean droplet, Docker, `/opt/juno`. Saved site logins are made on Faith's Mac with
 `uv run assistant browser-login <site>` and shipped by the deploy script.
 
-## End of every session
-Update `HANDOFF.md` (state, pending, next), add a `CHANGELOG.md` entry, commit, push.
+## End of every session (required)
+1. Rewrite the "What is live", "Pending right now" and "Next candidates" sections of `HANDOFF.md`.
+2. Add a dated entry to `CHANGELOG.md` (what shipped, what changed, what broke).
+3. `git add -A && git commit -m "<what you did>" && git push origin main`.
+4. Say in your closing message that you did 1–3. If you can't push, say that instead.

@@ -5,7 +5,8 @@ juno: a school assistant that grows into a general one. Python 3.12+, managed wi
 - `RESEARCH.md` — what Poke, OpenClaw, Wick and friends get right and wrong, and the API facts this design rests on.
 - `DECISIONS.md` — every choice made before building, and the defaults you can flip.
 - `docs/01-canvas-sync.md`, `docs/02-juno.md` — one walkthrough per phase, written to teach.
-- `CLAUDE.md` — how to work in this repo (TDD, always).
+- `AGENTS.md` — **for AI agents, any platform: read first.** Rules, where context lives, and the required session-end routine (update `HANDOFF.md`, `CHANGELOG.md`, push).
+- `HANDOFF.md` — live state: what runs, what's pending, what's next.
 
 ## What runs
 
