@@ -88,3 +88,14 @@ def test_last_run_reports_the_most_recent_finished_job(tmp_path):
     s.start_run("sync")  # in progress, not finished: ignored
     finished_at, ok = s.last_run("sync")
     assert ok is True and finished_at.tzinfo is not None
+
+
+def test_pending_job_round_trip(tmp_path):
+    s = make_store(tmp_path)
+    assert s.pending_job() is None
+    s.propose_job("calendar_first_run", {"digest": "abc"}, "add 3 events?", at=NOW)
+    job = s.pending_job()
+    assert job["kind"] == "calendar_first_run" and job["payload"] == {"digest": "abc"}
+    assert job["question"] == "add 3 events?" and job["asked_at"] == NOW.isoformat(timespec="seconds")
+    s.kv_delete("pending_job")
+    assert s.pending_job() is None

@@ -317,6 +317,16 @@ class Store:
         self.conn.execute("UPDATE actions SET undone_at=? WHERE id=?", (_now(), action_id))
         self.conn.commit()
 
+    # -- proposals from scheduled jobs (one at a time; a yes/no in chat answers it) ---
+
+    def pending_job(self) -> dict | None:
+        raw = self.kv_get("pending_job")
+        return json.loads(raw) if raw else None
+
+    def propose_job(self, kind: str, payload: dict, question: str, *, at: datetime | None = None) -> None:
+        stamp = (at or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+        self.kv_set("pending_job", json.dumps({"kind": kind, "payload": payload, "question": question, "asked_at": stamp}))
+
     # -- phase 2: key/value ---------------------------------------------------
 
     def kv_get(self, key: str) -> str | None:

@@ -106,3 +106,12 @@ async def test_expired_login_is_reported_once_a_day(tmp_path):
     await job.run()
     await job.run()
     assert out.sent == ["gradescope logged me out. on your mac: uv run assistant browser-login gradescope, then scripts/deploy.sh"]
+
+
+async def test_unanswered_proposal_is_asked_once(tmp_path):
+    job, store, todoist, out = make_job(tmp_path, [])
+    await job.run()
+    await job.run()                                  # still unanswered: no repeat
+    assert len(out.sent) == 1
+    assert store.pending_job()["question"] == out.sent[0]
+    assert await job.run(quiet=True) == out.sent[0]  # sync_now still learns what's waiting on her

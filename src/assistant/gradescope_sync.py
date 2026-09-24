@@ -10,7 +10,6 @@ over Telegram and waits for a yes. After that, new assignments are created then 
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Awaitable, Callable
@@ -120,10 +119,12 @@ class GradescopeSync:
                              "url": it.html_url, "submitted": it.submitted} for it in new],
                     "course_for": {str(gid): c.code for gid, c in course_for.items()},
                 }
-                self.store.kv_set("pending_job", json.dumps({"kind": JOB_KIND, "payload": payload, "question": ""}))
                 question = self._question(pairs, new, course_for)
-                if not quiet:
-                    await self.send(question)
+                pending = self.store.pending_job()
+                if not (pending and pending["kind"] == JOB_KIND and pending["payload"].get("digest") == digest):
+                    self.store.propose_job(JOB_KIND, payload, question, at=now)   # first time: ask; after that, wait
+                    if not quiet:
+                        await self.send(question)
                 return question
 
         plan = plan_sync(items, course_for, links, tasks, tz=self.tz, complete_when_submitted=self.complete_when_submitted)

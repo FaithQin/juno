@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -174,8 +173,12 @@ class CalendarSync:
                              "end": ev.end.isoformat() if ev.end else None, "location": ev.location, "description": ev.description,
                              "html_url": ev.html_url} for ev in new],
                 }
-                self.store.kv_set("pending_job", json.dumps({"kind": JOB_KIND, "payload": payload, "question": ""}))
-                await self.send(self._question(len(events), pairs, new))
+                pending = self.store.pending_job()
+                if pending and pending["kind"] == JOB_KIND and pending["payload"].get("digest") == digest:
+                    return                                   # asked already; her answer is still coming
+                question = self._question(len(events), pairs, new)
+                self.store.propose_job(JOB_KIND, payload, question, at=now)
+                await self.send(question)
                 return
 
         added: list[str] = []

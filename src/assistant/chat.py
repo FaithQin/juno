@@ -83,7 +83,7 @@ class ChatSession:
     # -- proposals from scheduled jobs (e.g. the Gradescope first run) --------
 
     def propose_job(self, kind: str, payload: dict, question: str) -> None:
-        self.store.kv_set("pending_job", json.dumps({"kind": kind, "payload": payload, "question": question}))
+        self.store.propose_job(kind, payload, question, at=self.ops.now())
 
     async def _answer_job(self, approved: bool) -> str:
         raw = self.store.kv_get("pending_job")

@@ -123,3 +123,15 @@ async def test_declined_first_run_is_not_repeated_until_canvas_changes(tmp_path)
     box["events"].append(cev(884166, 25, 10, 0))
     await sync.run()
     assert len(out.sent) == 2
+
+
+async def test_unanswered_proposal_is_asked_once_until_canvas_changes(tmp_path):
+    sync, store, cal, out, box = make_sync(tmp_path, [cev(884165, 24, 16, 30)], [])
+    await sync.run()
+    await sync.run()                                                        # still unanswered: don't nag every hour
+    assert len(out.sent) == 1
+    job = store.pending_job()
+    assert job["question"] == out.sent[0] and job["asked_at"] == NOW.isoformat(timespec="seconds")
+    box["events"].append(cev(884166, 25, 10, 0, title="EE 310 review session"))   # canvas added one: a new question
+    await sync.run()
+    assert len(out.sent) == 2 and "EE 310 review session" in out.sent[1]
