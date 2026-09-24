@@ -7,14 +7,46 @@ import re
 from dataclasses import dataclass
 from datetime import timedelta
 
+from dataclasses import replace
+
 from pydantic_ai import (
     Agent, DeferredToolRequests, DeferredToolResults, ModelMessagesTypeAdapter, ToolDenied, UsageLimits,
 )
+from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
 
 from .chat_ops import ChatOps
 from .db import Store
 
-DEFAULT_LIMITS = UsageLimits(request_limit=14, total_tokens_limit=120_000)   # browsing turns take several steps
+DEFAULT_LIMITS = UsageLimits(request_limit=24, total_tokens_limit=250_000)   # a ceiling; trimming keeps real turns far below
+KEEP_FULL = 3          # most recent tool results stay intact
+BIG = 600              # older results longer than this are shrunk
+TRIM_NOTE = "\n… [older tool output trimmed; call the tool again if you need it]"
+
+
+def trim_old_tool_returns(messages: list[ModelMessage]) -> list[ModelMessage]:
+    """History processor: every model request re-sends the whole conversation, and a page
+    snapshot is thousands of tokens, so all but the last few tool results are shrunk."""
+    positions = [
+        (mi, pi)
+        for mi, m in enumerate(messages) if isinstance(m, ModelRequest)
+        for pi, p in enumerate(m.parts) if isinstance(p, ToolReturnPart)
+    ]
+    to_trim = set(positions[:-KEEP_FULL]) if KEEP_FULL else set(positions)
+    if not to_trim:
+        return messages
+    out: list[ModelMessage] = []
+    for mi, m in enumerate(messages):
+        if not (isinstance(m, ModelRequest) and any((mi, pi) in to_trim for pi in range(len(m.parts)))):
+            out.append(m)
+            continue
+        parts = []
+        for pi, p in enumerate(m.parts):
+            if (mi, pi) in to_trim and isinstance(getattr(p, "content", None), str) and len(p.content) > BIG:
+                parts.append(replace(p, content=p.content[: BIG // 2].rstrip() + TRIM_NOTE))
+            else:
+                parts.append(p)
+        out.append(replace(m, parts=parts))
+    return out
 DEFAULT_RUN_TIMEOUT = timedelta(seconds=180)   # whole turn, all tool calls included
 
 YES = {"yes", "y", "yep", "yeah", "yea", "ok", "okay", "go", "go ahead", "do it", "sure", "confirm", "👍", "please"}

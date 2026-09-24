@@ -23,6 +23,7 @@ from .reminders import DueTask
 from .tasks import due_task_from, match_tasks, normalize_course
 
 MIN_PRIORITY_ELSEWHERE = 3          # Todoist API: 4 = p1, 3 = p2 (Faith: "Classes plus p1/p2 anywhere")
+PRIORITY_WORDS = {"p1": 4, "p2": 3, "p3": 2, "p4": 1}   # what she says → Todoist API level
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DUE_ERROR = "error: due must be an ISO date (2026-09-28) or datetime (2026-09-28T23:59); ask if unsure"
 
@@ -256,6 +257,34 @@ class ChatOps:
         when = self._when(due_at or due_date) if (due_at or due_date) else "no date"
         return f"moved: {t.content} → {when}"
 
+    def edit_task(self, query: str, title: str | None = None, notes: str | None = None, priority: str | None = None) -> str:
+        if not title and notes is None and not priority:
+            return "nothing to change: give a new title, notes, or priority"
+        api_priority = None
+        if priority:
+            api_priority = PRIORITY_WORDS.get(priority.strip().lower())
+            if api_priority is None:
+                return "error: priority must be p1, p2, p3 or p4"
+        t = self._pick(query)
+        if isinstance(t, str):
+            return t
+        old = {"content": t.content, "description": getattr(t, "description", "") or "", "priority": getattr(t, "priority", 1)}
+        kwargs: dict = {}
+        changed: list[str] = []
+        if title:
+            kwargs["content"] = title.strip()
+            changed.append("title")
+        if notes is not None:
+            kwargs["description"] = notes
+            changed.append("notes")
+        if api_priority:
+            kwargs["priority"] = api_priority
+            changed.append(f"priority {priority.strip().lower()}")
+        self.todoist.update_task(t.id, **kwargs)
+        new_content = kwargs.get("content", t.content)
+        self.store.log_action("edit_task", {"task_id": t.id, "content": new_content, "old": old}, at=self.now())
+        return f"updated: {new_content} ({', '.join(changed)})"
+
     def snooze(self, query: str, at: str) -> str:
         t = self._pick(query)
         if isinstance(t, str):
@@ -306,6 +335,10 @@ class ChatOps:
                 old = old if old.tzinfo else old.replace(tzinfo=self.tz)
                 self.todoist.update_task(p["task_id"], due_at=old)
                 msg = f"undone: {p['content']} back to {self._when(old)}"
+        elif a.kind == "edit_task":
+            old = p["old"]
+            self.todoist.update_task(p["task_id"], content=old["content"], description=old["description"], priority=old["priority"])
+            msg = f"undone: {old['content']} restored"
         elif a.kind == "snooze":
             self.store.clear_snooze(p["task_id"])
             msg = f"undone: snooze for {p['content']} cleared"

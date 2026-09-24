@@ -153,3 +153,24 @@ def test_schedule_says_when_the_calendar_is_not_connected(tmp_path):
     ops, *_ = make_ops(tmp_path)
     ops.calendar = BrokenCalendar()
     assert ops.schedule("today") == "calendar isn't connected yet. run: uv run assistant gcal-auth"
+
+
+def test_edit_task_changes_title_notes_priority_and_undoes(tmp_path):
+    ops, store, todoist = make_ops(tmp_path, SAMPLE)
+    reply = ops.edit_task("assignment 1", notes="Paperless link: https://paperless.stanford.edu/a1", priority="p2")
+    assert reply == "updated: CS 106B: Assignment 1 (Paperless) (notes, priority p2)"
+    t = todoist.get_task("T3")
+    assert t.description == "Paperless link: https://paperless.stanford.edu/a1" and t.priority == 3
+    assert ops.edit_task("assignment 1", title="CS 106B: Assignment 1 (Paperless, late day used)") == \
+        "updated: CS 106B: Assignment 1 (Paperless, late day used) (title)"
+    assert ops.undo() == "undone: CS 106B: Assignment 1 (Paperless) restored"
+    assert todoist.get_task("T3").content == "CS 106B: Assignment 1 (Paperless)"
+    assert ops.undo() == "undone: CS 106B: Assignment 1 (Paperless) restored"
+    assert todoist.get_task("T3").description == "" and todoist.get_task("T3").priority == 1
+
+
+def test_edit_task_needs_something_to_change_and_a_single_match(tmp_path):
+    ops, *_ = make_ops(tmp_path, SAMPLE)
+    assert ops.edit_task("assignment 1") == "nothing to change: give a new title, notes, or priority"
+    assert ops.edit_task("engr 40m", notes="x").startswith("which one?")
+    assert ops.edit_task("assignment 1", priority="p9") == "error: priority must be p1, p2, p3 or p4"

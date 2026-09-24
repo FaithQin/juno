@@ -75,12 +75,15 @@ class TodoistClient:
         return self.api.add_task(content, **kwargs)
 
     def update_task(self, task_id: str, *, content: str | None = None, description: str | None = None,
-                    due_at: datetime | None = None, due_date: date | None = None, clear_due: bool = False) -> Task:
+                    due_at: datetime | None = None, due_date: date | None = None, clear_due: bool = False,
+                    priority: int | None = None) -> Task:
         kwargs: dict = {}
         if content is not None:
             kwargs["content"] = content
         if description is not None:
             kwargs["description"] = description
+        if priority is not None:
+            kwargs["priority"] = priority
         if clear_due:
             kwargs["due_string"] = "no date"
         elif due_at is not None:

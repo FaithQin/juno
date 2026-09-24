@@ -58,12 +58,15 @@ class FakeTodoist:
         self._tasks[t.id] = t
         return t
 
-    def update_task(self, task_id, *, content=None, description=None, due_at=None, due_date=None, clear_due=False):
+    def update_task(self, task_id, *, content=None, description=None, due_at=None, due_date=None, clear_due=False,
+                    priority=None):
         t = self._tasks[task_id]
         if content is not None:
             t.content = content
         if description is not None:
             t.description = description
+        if priority is not None:
+            t.priority = priority
         if clear_due:
             t.due = None
         elif due_at is not None:

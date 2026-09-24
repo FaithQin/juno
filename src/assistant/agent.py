@@ -11,10 +11,11 @@ from __future__ import annotations
 from typing import Callable, Literal
 
 from pydantic_ai import Agent, DeferredToolRequests, RunContext, WebSearchTool, WebSearchUserLocation
-from pydantic_ai.capabilities import NativeTool
+from pydantic_ai.capabilities import NativeTool, ProcessHistory
 from pydantic_ai.models.openai import OpenAIResponsesModelSettings
 
 from .chat_ops import ChatOps
+from .chat import trim_old_tool_returns
 
 Scope = Literal["today", "tomorrow", "week", "overdue", "all"]
 
@@ -25,7 +26,7 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
 
     `web_search` adds the provider's native search (OpenAI Responses runs it server-side,
     about a cent per search). Opening a specific link is our own `read_link` tool below."""
-    capabilities = []
+    capabilities = [ProcessHistory(trim_old_tool_returns)]   # shrink old tool output before every request
     if web_search:
         capabilities.append(NativeTool(WebSearchTool(
             search_context_size="low",
@@ -175,6 +176,19 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
             due: ISO datetime (2026-10-07T23:59) or ISO date (2026-10-07).
         """
         return ctx.deps.reschedule_task(query, due)
+
+    @agent.tool
+    def edit_task(ctx: RunContext[ChatOps], query: str, title: str | None = None, notes: str | None = None,
+                  priority: str | None = None) -> str:
+        """Change a task's title, notes (its description), or priority. Only the fields given change.
+
+        Args:
+            query: a few words from the task name.
+            title: new full title, if changing it.
+            notes: new description text, if changing it (replaces the old one).
+            priority: p1 (highest), p2, p3 or p4.
+        """
+        return ctx.deps.edit_task(query, title=title, notes=notes, priority=priority)
 
     @agent.tool
     def snooze_reminder(ctx: RunContext[ChatOps], query: str, at: str) -> str:
