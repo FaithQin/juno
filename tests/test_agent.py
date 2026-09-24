@@ -244,3 +244,32 @@ async def test_daily_usage_is_recorded_for_status(tmp_path):
     assert store.kv_get("requests:2026-09-23") == "2"
     assert int(store.kv_get("tokens_in:2026-09-23")) > 0
     assert store.kv_get("tokens_cached:2026-09-23") == "0"
+
+
+async def test_a_photo_is_part_of_her_message_and_older_photos_are_thinned_out(tmp_path):
+    """The image travels with the text of that turn. Later turns still see the last few photos
+    (\"compare the pictures above\"), older ones become a note, so history doesn't fill with pixels."""
+    from pydantic_ai.messages import BinaryContent, UserPromptPart
+
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    seen: list = []
+
+    def fn(messages, info: AgentInfo) -> ModelResponse:
+        seen.append(messages)
+        return ModelResponse(parts=[TextPart("ok")])
+
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    with agent.override(model=FunctionModel(fn)):
+        for i in range(4):
+            await session.handle(f"photo {i}", images=[BinaryContent(f"jpeg{i}".encode(), media_type="image/jpeg")])
+        await session.handle("so which one?")
+    first = seen[0][-1].parts[0]
+    assert isinstance(first, UserPromptPart) and first.content[0] == "[wed sep 23, 10:00am] photo 0"
+    assert isinstance(first.content[1], BinaryContent) and first.content[1].data == b"jpeg0"
+
+    prompts = [p for m in seen[-1][:-1] for p in m.parts if isinstance(p, UserPromptPart)]
+    def has_image(p):
+        return isinstance(p.content, list) and any(isinstance(c, BinaryContent) for c in p.content)
+    assert [has_image(p) for p in prompts] == [False, True, True, True]     # the oldest photo is gone
+    assert prompts[0].content == ["[wed sep 23, 10:00am] photo 0", "[photo she sent, no longer attached]"]

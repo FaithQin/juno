@@ -74,6 +74,11 @@ def html_to_text(html: str, max_chars: int = MAX_CHARS) -> tuple[str, str]:
     return title.strip(), text
 
 
+def is_canvas_url(url: str, canvas_url: str) -> bool:
+    u, c = urlparse(url), urlparse(canvas_url)
+    return bool(u.hostname) and u.hostname == c.hostname
+
+
 def canvas_api_path(url: str, canvas_url: str) -> str | None:
     u, c = urlparse(url), urlparse(canvas_url)
     if not u.hostname or u.hostname != c.hostname:

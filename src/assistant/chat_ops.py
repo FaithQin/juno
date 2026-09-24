@@ -22,6 +22,7 @@ from .gcal import event_body
 from .db import Store
 from .reminders import DueTask
 from .tasks import due_task_from, match_tasks, normalize_course
+from .web import canvas_api_path, is_canvas_url
 
 MIN_PRIORITY_ELSEWHERE = 3          # Todoist API: 4 = p1, 3 = p2 (Faith: "Classes plus p1/p2 anywhere")
 PRIORITY_WORDS = {"p1": 4, "p2": 3, "p3": 2, "p4": 1}   # what she says → Todoist API level
@@ -548,7 +549,13 @@ class ChatOps:
             return f"browser error: {type(e).__name__}: {str(e).splitlines()[0][:200]}"
         return render_snapshot(snap, site_key=getattr(self.browser, "site_key", None))
 
+    CANVAS_NOTE = ("i don't browse canvas (its login expires within a day; the api token doesn't): tasks and due "
+                   "dates come from get_tasks, events from get_schedule, and an assignment, page, quiz or "
+                   "discussion link from read_link")
+
     async def browse(self, url: str) -> str:
+        if self.web is not None and is_canvas_url(url, self.web.canvas_url):
+            return self.read_link(url) if canvas_api_path(url, self.web.canvas_url) else self.CANVAS_NOTE
         return await self._browser_call("open", url)
 
     async def browser_click(self, ref: int) -> str:

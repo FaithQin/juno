@@ -134,3 +134,74 @@ async def test_status_command_answers_allowed_chat_only():
     update, msg = update_for(999, "/status")
     await ch._on_status(update, None)
     assert msg.replies == [] and ch.ignored == [999]
+
+
+# -- photos --------------------------------------------------------------------------------------
+
+class FakeFile:
+    def __init__(self, data: bytes):
+        self.data = data
+
+    async def download_as_bytearray(self):
+        return bytearray(self.data)
+
+
+class FakePhotoBot(FakeBot):
+    def __init__(self):
+        super().__init__()
+        self.files = {"small": b"tiny", "big": b"\xff\xd8 big jpeg"}
+        self.fetched: list[str] = []
+
+    async def get_file(self, file_id):
+        self.fetched.append(file_id)
+        return FakeFile(self.files[file_id])
+
+
+def photo_update_for(chat_id, caption):
+    msg = FakeMessage(None)
+    msg.caption = caption
+    msg.photo = [SimpleNamespace(file_id="small", width=90), SimpleNamespace(file_id="big", width=1280)]
+    return SimpleNamespace(effective_chat=SimpleNamespace(id=chat_id), message=msg), msg
+
+
+async def test_a_photo_reaches_the_brain_as_an_image_with_its_caption():
+    from pydantic_ai.messages import BinaryContent
+
+    seen: list = []
+
+    async def on_message(text, images=None):
+        seen.append((text, images))
+        return "i see two section times"
+
+    ch = make_channel([42], on_message)
+    ch.bot = FakePhotoBot()
+    update, msg = photo_update_for(42, "which of these fit?")
+    await ch._on_photo(update, None)
+    assert msg.replies == ["i see two section times"]
+    assert ch.bot.fetched == ["big"]                                   # the largest rendition only
+    text, images = seen[0]
+    assert text == "which of these fit?"
+    assert len(images) == 1 and isinstance(images[0], BinaryContent)
+    assert images[0].data == b"\xff\xd8 big jpeg" and images[0].media_type == "image/jpeg"
+
+
+async def test_a_photo_without_a_caption_still_goes_through():
+    seen: list = []
+
+    async def on_message(text, images=None):
+        seen.append(text)
+        return "got it"
+
+    ch = make_channel([42], on_message)
+    ch.bot = FakePhotoBot()
+    update, msg = photo_update_for(42, None)
+    await ch._on_photo(update, None)
+    assert seen == [""] and msg.replies == ["got it"]
+
+
+async def test_photos_from_unknown_chats_are_ignored():
+    ch = make_channel([42])
+    ch.bot = FakePhotoBot()
+    update, msg = photo_update_for(999, "hi")
+    await ch._on_photo(update, None)
+    assert msg.replies == [] and ch.bot.fetched == [] and ch.ignored == [999]

@@ -13,8 +13,8 @@ from pydantic_ai import (
     Agent, DeferredToolRequests, DeferredToolResults, ModelMessagesTypeAdapter, ToolDenied, UsageLimits,
 )
 from pydantic_ai.messages import (
-    ModelMessage, ModelRequest, ModelResponse, RetryPromptPart, SystemPromptPart, TextPart, ToolCallPart, ToolReturnPart,
-    UserPromptPart,
+    BinaryContent, ModelMessage, ModelRequest, ModelResponse, RetryPromptPart, SystemPromptPart, TextPart, ToolCallPart,
+    ToolReturnPart, UserPromptPart,
 )
 
 from .chat_ops import ChatOps
@@ -52,7 +52,15 @@ def trim_old_tool_returns(messages: list[ModelMessage]) -> list[ModelMessage]:
     return out
 
 
-def compact_previous_turns(messages: list[ModelMessage]) -> list[ModelMessage]:
+KEEP_IMAGES = 3        # photos stay attached to the last few messages that carried one; older ones become a note
+IMAGE_NOTE = "[photo she sent, no longer attached]"
+
+
+def _has_image(p) -> bool:
+    return isinstance(p, UserPromptPart) and isinstance(p.content, list) and any(isinstance(c, BinaryContent) for c in p.content)
+
+
+def compact_previous_turns(messages: list[ModelMessage], *, keep_images: int = KEEP_IMAGES) -> list[ModelMessage]:
     """Earlier turns come back as conversation only: what she said and what juno answered.
 
     Every request re-sends the whole history, and most of it was never the conversation: tool
@@ -66,10 +74,19 @@ def compact_previous_turns(messages: list[ModelMessage]) -> list[ModelMessage]:
         for m in messages if isinstance(m, ModelRequest)
         for p in m.parts if isinstance(p, (ToolReturnPart, RetryPromptPart)) and p.tool_call_id
     }
+    with_images = [(mi, pi) for mi, m in enumerate(messages) if isinstance(m, ModelRequest)
+                   for pi, p in enumerate(m.parts) if _has_image(p)]
+    thin = set(with_images[:-keep_images]) if keep_images else set(with_images)
     out: list[ModelMessage] = []
-    for m in messages:
+    for mi, m in enumerate(messages):
         if isinstance(m, ModelRequest):
-            parts = [p for p in m.parts if isinstance(p, (UserPromptPart, SystemPromptPart))]
+            parts = []
+            for pi, p in enumerate(m.parts):
+                if not isinstance(p, (UserPromptPart, SystemPromptPart)):
+                    continue
+                if (mi, pi) in thin:
+                    p = replace(p, content=[IMAGE_NOTE if isinstance(c, BinaryContent) else c for c in p.content])
+                parts.append(p)
         elif isinstance(m, ModelResponse):
             if any(isinstance(p, ToolCallPart) and p.tool_call_id not in answered for p in m.parts):
                 out.append(m)
@@ -155,9 +172,11 @@ class ChatSession:
     def _bump(self, key: str, n: int) -> None:
         self.store.kv_set(key, str(int(self.store.kv_get(key) or 0) + n))
 
-    async def _run(self, text: str | None, *, deferred=None):
+    async def _run(self, text: str | None, *, images: list[BinaryContent] | None = None, deferred=None):
         now = self.ops.now()
         prompt = f"[{self._stamp(now)}] {text}" if text is not None else None
+        if images:
+            prompt = [prompt or f"[{self._stamp(now)}]", *images]
         result = await asyncio.wait_for(
             self.agent.run(prompt, deps=self.ops, message_history=self._history(now),
                            deferred_tool_results=deferred, usage_limits=self.usage_limits),
@@ -193,8 +212,8 @@ class ChatSession:
         verdict = True if approved else ToolDenied("faith said no")
         return await self._run(None, deferred=DeferredToolResults(approvals={p.tool_call_id: verdict}))
 
-    async def handle(self, text: str) -> str:
-        answer = _norm(text)
+    async def handle(self, text: str, *, images: list[BinaryContent] | None = None) -> str:
+        answer = _norm(text) if not images else ""       # a photo is never a yes or a no
         if self.pending is not None:                     # a tool waiting on her yes is always the latest question
             if answer in YES:
                 return self._finish(await self._resume(True))
@@ -202,7 +221,7 @@ class ChatSession:
                 return self._finish(await self._resume(False))
             skipped = self.pending.description
             await self._resume(False)                    # close the dangling tool call, then move on
-            reply = self._finish(await self._run(text))
+            reply = self._finish(await self._run(text, images=images))
             return f"skipped the pending {skipped}.\n\n{reply}"
         if self._job_is_fresh():
             if answer in YES:
@@ -210,4 +229,4 @@ class ChatSession:
             if answer in NO:
                 return await self._answer_job(False)
             # anything else: normal chat, the proposal keeps waiting
-        return self._finish(await self._run(text))
+        return self._finish(await self._run(text, images=images))

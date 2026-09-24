@@ -285,3 +285,30 @@ def test_sync_now_runs_the_syncs_and_reports(tmp_path):
     assert text == "canvas: progress 1:\n  - ENGR 40M quizzes 2–8: 1/7 done (3. Current + KCL)"
     text = ops.sync_now("all")
     assert text.startswith("canvas: progress 1:") and "gradescope sync" in text
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_browse_sends_canvas_through_the_api_never_the_browser(tmp_path):
+    """Canvas's browser login dies within a day (Stanford SSO issues session cookies only), and the
+    API token never does. So a Canvas link is read through the API, and the rest is a pointer."""
+    ops, *_ = make_ops(tmp_path, SAMPLE)
+
+    class Web:
+        canvas_url = "https://canvas.stanford.edu"
+
+        def read(self, url):
+            return f"read via api: {url}"
+
+    class Boom:
+        async def open(self, url):
+            raise AssertionError("the browser must not open canvas")
+
+    ops.web, ops.browser = Web(), Boom()
+    assert await ops.browse("https://canvas.stanford.edu/courses/1/assignments/2") == "read via api: https://canvas.stanford.edu/courses/1/assignments/2"
+    out = await ops.browse("https://canvas.stanford.edu/calendar")
+    assert out.startswith("i don't browse canvas") and "get_schedule" in out and "get_tasks" in out

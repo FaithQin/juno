@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Awaitable, Callable
 
+from pydantic_ai.messages import BinaryContent
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
@@ -62,6 +63,7 @@ class TelegramChannel:
         self.app.add_handler(CommandHandler("start", self._on_start))
         self.app.add_handler(CommandHandler("status", self._on_status))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_text))
+        self.app.add_handler(MessageHandler(filters.PHOTO, self._on_photo))
 
     # -- inbound -------------------------------------------------------------
 
@@ -83,15 +85,33 @@ class TelegramChannel:
             return
         await update.message.reply_text(self.status() if self.status else "no status available")
 
+    def _allowed(self, chat_id: int) -> bool:
+        if chat_id in self.allowed_chat_ids:
+            return True
+        self.ignored.append(chat_id)
+        log.info("ignored message from chat %s", chat_id)
+        return False
+
     async def _on_text(self, update, context) -> None:
+        await self._handle(update, update.message.text, None)
+
+    async def _on_photo(self, update, context) -> None:
+        """A photo (a screenshot of section times, a syllabus page) goes to the brain as an image
+        plus its caption. Telegram offers several renditions; the largest is the readable one."""
+        if not self._allowed(update.effective_chat.id):
+            return
+        best = max(update.message.photo, key=lambda ph: ph.width)
+        blob = await self.bot.get_file(best.file_id)
+        data = bytes(await blob.download_as_bytearray())
+        await self._handle(update, update.message.caption or "", [BinaryContent(data, media_type="image/jpeg")])
+
+    async def _handle(self, update, text: str, images: list[BinaryContent] | None) -> None:
         chat_id = update.effective_chat.id
-        if chat_id not in self.allowed_chat_ids:
-            self.ignored.append(chat_id)
-            log.info("ignored message from chat %s", chat_id)
+        if not self._allowed(chat_id):
             return
         await self.bot.send_chat_action(chat_id, ChatAction.TYPING)
         try:
-            reply = await self.on_message(update.message.text)
+            reply = await (self.on_message(text, images=images) if images else self.on_message(text))
         except Exception as e:
             log.exception("handling a message failed")
             reply = describe_error(e)
