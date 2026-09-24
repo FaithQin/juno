@@ -141,6 +141,13 @@ def format_announcements(threads: list[EdThread], *, course_code: str, tz: ZoneI
         lines.append(f"- {day} · {t.title} [{', '.join(tags)}]")
         body = t.text.replace("\n", " ").strip()
         if body:
-            lines.append("  " + (body[:400] + "…" if len(body) > 400 else body))
+            lines.append("  " + (body[:600] + "…" if len(body) > 600 else body))
+        links = []
+        for url in re.findall(r"https?://[^\s)\]>]+", t.text):
+            url = url.rstrip(".,;")
+            if url not in links and url != t.url:
+                links.append(url)
+        if links:
+            lines.append("  links: " + ", ".join(links[:5]))
         lines.append(f"  {t.url}")
     return "\n".join(lines)

@@ -42,7 +42,9 @@ def test_document_to_text_flattens_ed_markup_and_keeps_links():
 def test_courses_and_active_match():
     ed = EdClient("tok", fetch=fake_fetch)
     courses = ed.courses()
-    assert [(c.id, c.code, c.status) for c in courses] == [(70001, "CS 106B", "active"), (60001, "CS 106B", "archived"), (70002, "ENGR 40M", "active")]
+    assert [(c.id, c.code, c.status) for c in courses] == [
+        (70001, "CS 106B", "active"), (60001, "CS 106B", "archived"), (70002, "ENGR 40M", "active"), (50001, "ENGR 40M", "active"),
+    ]
     assert match_course(courses, "cs106b").id == 70001          # the active one, not last year's
     assert match_course(courses, "engr 40m").id == 70002        # two "active": the newer (higher id) wins
     assert match_course(courses, "physics") is None
@@ -64,8 +66,19 @@ def test_threads_and_announcement_formatting():
     assert lines[0] == "CS 106B announcements and pinned posts (newest first):"
     assert lines[1] == "- wed sep 23 · Section sign-ups open Thursday [announcement, pinned]"
     assert lines[2] == "  Sign-ups open Thu 12pm at the portal (https://cs198.stanford.edu/section/signup). Sections start week 2."
-    assert lines[3] == "  https://edstem.org/us/courses/70001/discussion/9001"
+    assert lines[3] == "  links: https://cs198.stanford.edu/section/signup"
+    assert lines[4] == "  https://edstem.org/us/courses/70001/discussion/9001"
     assert "Welcome!" in text and "Help with A0" not in text          # questions aren't announcements
+
+
+def test_long_announcement_keeps_its_links_even_when_the_body_is_cut():
+    from assistant.ed import EdThread
+    from datetime import datetime, timezone
+    long_body = "x " * 600 + "sign up here: https://forms.gle/abc and also https://cs198.stanford.edu/portal"
+    t = EdThread(1, 1, "announcement", "Long one", long_body, "", False, datetime(2026, 9, 23, tzinfo=timezone.utc), "https://edstem.org/us/courses/1/discussion/1")
+    text = format_announcements([t], course_code="CS 106B", tz=TZ)
+    assert "  links: https://forms.gle/abc, https://cs198.stanford.edu/portal" in text
+    assert "…" in text
 
 
 def test_token_is_read_from_the_saved_browser_login(tmp_path):
