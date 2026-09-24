@@ -8,6 +8,20 @@ import sys
 from .config import Settings, load_courses, project_root
 
 
+def run_one_shot(coro):
+    """Like asyncio.run, but leaves the loop open at exit. Playwright's driver transport is
+    finalized late by the interpreter; on Python 3.12 that prints 'Event loop is closed' if
+    the loop was already closed. A short-lived command doesn't need the loop closed."""
+    import asyncio
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+
+
 def load_settings() -> Settings:
     try:
         return Settings()
@@ -106,7 +120,7 @@ def cmd_brief(args) -> int:
     async def show(text):
         print(text)
 
-    asyncio.run(with_cleanup(rt.ops, run_brief_job(rt.ops, send=show)))
+    run_one_shot(with_cleanup(rt.ops, run_brief_job(rt.ops, send=show)))
     return 0
 
 
@@ -195,7 +209,7 @@ def cmd_browser_login(args) -> int:
         print(f"saved {path}")
         print("ship it to the server with: scripts/deploy.sh root@SERVER_IP")
 
-    asyncio.run(run())
+    run_one_shot(run())
     return 0
 
 
@@ -224,7 +238,7 @@ def cmd_browser_check(_args) -> int:
         finally:
             await session.stop()
 
-    asyncio.run(run())
+    run_one_shot(run())
     return 0
 
 
