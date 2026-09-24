@@ -120,3 +120,42 @@ async def test_background_job_proposal_is_approved_or_declined_over_chat(tmp_pat
         session.propose_job("gradescope_first_run", {"x": 2}, "again?")
         reply = await session.handle("what's due today")                # unrelated message: proposal stays pending
         assert reply == "chat reply" and store.kv_get("pending_job") is not None
+
+
+async def test_stale_proposal_is_not_answered_by_a_stray_ok_but_the_model_can_answer_it(tmp_path):
+    """Hours of other chat after a proposal: a bare 'ok' is normal chat, and the proposal stays visible
+    to the model, which answers it through answer_proposal when Faith clearly means it."""
+    from datetime import timedelta
+    from pydantic_ai.messages import ToolReturnPart
+    from test_chat_ops import NOW
+
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    seen: list[bool] = []
+
+    async def on_calendar(payload, approved):
+        seen.append(approved)
+        return "linked 9 existing events, added 1"
+
+    session.job_handlers["calendar_first_run"] = on_calendar
+    store.propose_job("calendar_first_run", {"digest": "d"}, "canvas calendar: 10 events. reply yes or no", at=NOW - timedelta(hours=20))
+    store.save_messages("tg:1", b"[]", at=NOW - timedelta(hours=3))          # she talked about other things since
+
+    with agent.override(model=FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("chat reply")]))):
+        assert await session.handle("ok") == "chat reply"                      # a stray "ok" hours later is not a yes
+    assert seen == [] and store.pending_job() is not None
+    assert "canvas calendar: 10 events" in ops.context_block()                # the model can see what's waiting
+
+    def via_tool(messages, info: AgentInfo) -> ModelResponse:
+        ret = next((p for p in messages[-1].parts if isinstance(p, ToolReturnPart)), None)
+        if ret is None:
+            return ModelResponse(parts=[ToolCallPart("answer_proposal", {"approved": True})])
+        return ModelResponse(parts=[TextPart(ret.content)])
+
+    with agent.override(model=FunctionModel(via_tool)):
+        assert await session.handle("yes go ahead with the canvas calendar thing") == "linked 9 existing events, added 1"
+    assert seen == [True] and store.pending_job() is None
+    assert "canvas calendar" not in ops.context_block()
+    with agent.override(model=FunctionModel(via_tool)):
+        assert await session.handle("and again") == "there's no proposal waiting"

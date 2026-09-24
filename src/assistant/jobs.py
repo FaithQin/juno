@@ -15,14 +15,16 @@ from .brief import format_brief
 from .chat_ops import ChatOps
 from .db import Store
 from .reminders import format_nudges, plan_nudges
+from .retry import describe_briefly, is_transient, retrying
 from .sync import Report, format_report
 
 Send = Callable[[str], Awaitable[None]]
+Sleep = Callable[[float], Awaitable[None]]
 log = logging.getLogger(__name__)
 
 
 async def run_nudges_job(ops: ChatOps, store: Store, *, send: Send, now: datetime | None = None,
-                         scan_interval: timedelta = timedelta(minutes=10)) -> None:
+                         scan_interval: timedelta = timedelta(minutes=10), sleep: Sleep = asyncio.sleep) -> None:
     now = now or ops.now()
 
     offline_since = None
@@ -32,7 +34,13 @@ async def run_nudges_job(ops: ChatOps, store: Store, *, send: Send, now: datetim
         if now - last_dt > scan_interval * 3:
             offline_since = last_dt   # we missed at least two scans: say so in any late nudge
 
-    tasks = await asyncio.to_thread(ops.due_tasks)
+    try:
+        tasks = await retrying(ops.due_tasks, label="nudges: todoist", delays=(5, 20), sleep=sleep)
+    except Exception as e:
+        if not is_transient(e):
+            raise
+        log.warning("nudges: todoist still down (%s); next scan in %s", describe_briefly(e), scan_interval)
+        return                                         # the next scan picks it up; late nudges say they're late
     nudges = plan_nudges(tasks, now=now, tz=ops.tz, sent=store.sent_nudges(), snoozes=store.snoozes())
     if nudges:
         await send(format_nudges(nudges, now=now, tz=ops.tz, offline_since=offline_since))
@@ -46,7 +54,7 @@ async def run_nudges_job(ops: ChatOps, store: Store, *, send: Send, now: datetim
 OVERDUE_WINDOW = timedelta(days=7)   # older overdue items are noise; they're still in Todoist
 
 
-async def run_brief_job(ops: ChatOps, *, send: Send, now: datetime | None = None) -> None:
+async def run_brief_job(ops: ChatOps, *, send: Send, now: datetime | None = None, sleep: Sleep = asyncio.sleep) -> None:
     now = now or ops.now()
     local = now.astimezone(ops.tz)
     today = local.date()
@@ -58,7 +66,14 @@ async def run_brief_job(ops: ChatOps, *, send: Send, now: datetime | None = None
             events = await asyncio.to_thread(ops.calendar.events_for_day, ops.calendar_names, today, ops.tz)
         except Exception as e:
             log.warning("brief: calendar unavailable (%s: %s); sending tasks only", type(e).__name__, e)
-    tasks = await asyncio.to_thread(ops.all_due_tasks)   # the brief covers every dated task (Faith's choice)
+    try:   # the brief covers every dated task (Faith's choice); it's once a day, so wait out a Todoist outage
+        tasks = await retrying(ops.all_due_tasks, label="brief: todoist", sleep=sleep)
+    except Exception as e:
+        if not is_transient(e):
+            raise
+        log.error("brief: giving up on todoist (%s)", describe_briefly(e))
+        await send(f"no brief this morning: todoist isn't answering ({describe_briefly(e)}). ask me what's due once it's back")
+        return
 
     def day_of(t):
         return t.due_at.astimezone(ops.tz).date()
@@ -71,7 +86,7 @@ async def run_brief_job(ops: ChatOps, *, send: Send, now: datetime | None = None
     ))
 
 
-async def run_sync_job(*, run: Callable[[], Report], send: Send) -> None:
-    report = await asyncio.to_thread(run)
+async def run_sync_job(*, run: Callable[[], Report], send: Send, sleep: Sleep = asyncio.sleep) -> None:
+    report = await retrying(run, label="canvas sync", delays=(10, 60), sleep=sleep)
     if report.changed or report.errors:
         await send(format_report(report))

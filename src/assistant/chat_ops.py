@@ -38,6 +38,7 @@ class ChatOps:
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
         self.sync_canvas = None               # () -> Report, wired by app.py
         self.sync_gradescope = None           # () -> str | None, wired by app.py (runs the async job on the main loop)
+        self.answer_job = None                # async (approved) -> str, wired by ChatSession
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -565,6 +566,13 @@ class ChatOps:
     async def browser_back(self) -> str:
         return await self._browser_call("back")
 
+    # -- proposals from scheduled jobs ------------------------------------------
+
+    async def answer_proposal(self, approved: bool) -> str:
+        if self.answer_job is None or self.store.pending_job() is None:
+            return "there's no proposal waiting"
+        return await self.answer_job(approved)
+
     # ----------------------------------------------------------------------
     # what the model sees every turn (dynamic instructions)
     # ----------------------------------------------------------------------
@@ -579,4 +587,8 @@ class ChatOps:
         if facts:
             lines.append("things faith told me to remember:")
             lines.extend(f"- {f.text}" for f in facts)
+        job = self.store.pending_job()
+        if job and job.get("question"):
+            lines.append("a scheduled job is still waiting on her yes or no to this (answer_proposal, only when she clearly means it):")
+            lines.append(job["question"])
         return "\n".join(lines)

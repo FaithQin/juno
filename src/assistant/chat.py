@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from dataclasses import dataclass
 from datetime import timedelta
@@ -79,6 +78,7 @@ class ChatSession:
         self.run_timeout = run_timeout
         self.pending: PendingApproval | None = None
         self.job_handlers: dict = {}      # kind → async (payload, approved) -> reply text
+        ops.answer_job = self._answer_job   # the answer_proposal tool lands here
 
     # -- proposals from scheduled jobs (e.g. the Gradescope first run) --------
 
@@ -86,13 +86,23 @@ class ChatSession:
         self.store.propose_job(kind, payload, question, at=self.ops.now())
 
     async def _answer_job(self, approved: bool) -> str:
-        raw = self.store.kv_get("pending_job")
-        job = json.loads(raw)
+        job = self.store.pending_job()
+        if job is None:
+            return "there's no proposal waiting"
         self.store.kv_delete("pending_job")
         handler = self.job_handlers.get(job["kind"])
         if handler is None:
             return f"i lost the handler for {job['kind']}; nothing done"
         return await handler(job["payload"], approved)
+
+    def _job_is_fresh(self) -> bool:
+        """A bare yes/no answers a job's proposal only while that proposal is the last thing said.
+        Once other chat has happened, 'ok' means whatever it means in that chat; the proposal stays
+        in the model's context and the answer_proposal tool takes it from there."""
+        job = self.store.pending_job()
+        if job is None or not job.get("asked_at"):
+            return False
+        return not self.store.has_messages_after(self.conversation_id, job["asked_at"])
 
     def _history(self, now):
         history = []
@@ -137,15 +147,8 @@ class ChatSession:
         return await self._run(None, deferred=DeferredToolResults(approvals={p.tool_call_id: verdict}))
 
     async def handle(self, text: str) -> str:
-        if self.store.kv_get("pending_job"):
-            answer = _norm(text)
-            if answer in YES:
-                return await self._answer_job(True)
-            if answer in NO:
-                return await self._answer_job(False)
-            # anything else: normal chat, the proposal keeps waiting
-        if self.pending is not None:
-            answer = _norm(text)
+        answer = _norm(text)
+        if self.pending is not None:                     # a tool waiting on her yes is always the latest question
             if answer in YES:
                 return self._finish(await self._resume(True))
             if answer in NO:
@@ -154,4 +157,10 @@ class ChatSession:
             await self._resume(False)                    # close the dangling tool call, then move on
             reply = self._finish(await self._run(text))
             return f"skipped the pending {skipped}.\n\n{reply}"
+        if self._job_is_fresh():
+            if answer in YES:
+                return await self._answer_job(True)
+            if answer in NO:
+                return await self._answer_job(False)
+            # anything else: normal chat, the proposal keeps waiting
         return self._finish(await self._run(text))

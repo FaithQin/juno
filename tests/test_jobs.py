@@ -93,3 +93,59 @@ async def test_brief_job_survives_a_disconnected_calendar(tmp_path):
     out = Outbox()
     await run_brief_job(ops, send=out, now=datetime(2026, 9, 23, 7, 0, tzinfo=TZ))
     assert out.sent and out.sent[0].splitlines()[2] == "  no events"
+
+
+def http_error(status: int):
+    import httpx
+    req = httpx.Request("GET", "https://api.todoist.com/api/v1/tasks")
+    return httpx.HTTPStatusError("boom", request=req, response=httpx.Response(status, request=req))
+
+
+class Naps:
+    def __init__(self):
+        self.taken: list[float] = []
+
+    async def __call__(self, seconds):
+        self.taken.append(seconds)
+
+
+async def test_brief_job_rides_out_a_todoist_hiccup(tmp_path):
+    ops, store, todoist = make_ops(tmp_path, SAMPLE)
+    real, failures = todoist.all_tasks, []
+
+    def flaky():
+        if len(failures) < 2:
+            failures.append(1)
+            raise http_error(503)
+        return real()
+
+    todoist.all_tasks = flaky
+    out, naps = Outbox(), Naps()
+    await run_brief_job(ops, send=out, now=datetime(2026, 9, 23, 7, 0, tzinfo=TZ), sleep=naps)
+    assert naps.taken == [5, 20] and out.sent[0].startswith("morning. wed sep 23")
+
+
+async def test_brief_job_says_so_when_todoist_stays_down(tmp_path):
+    ops, store, todoist = make_ops(tmp_path, SAMPLE)
+
+    def down():
+        raise http_error(503)
+
+    todoist.all_tasks = down
+    out, naps = Outbox(), Naps()
+    await run_brief_job(ops, send=out, now=datetime(2026, 9, 23, 7, 0, tzinfo=TZ), sleep=naps)
+    assert len(naps.taken) == 5
+    assert out.sent == ["no brief this morning: todoist isn't answering (503 Service Unavailable). ask me what's due once it's back"]
+
+
+async def test_nudges_job_skips_a_scan_quietly_when_todoist_is_down(tmp_path):
+    ops, store, todoist = make_ops(tmp_path, SAMPLE)
+
+    def down(project_id):
+        raise http_error(502)
+
+    todoist.tasks = down
+    out, naps = Outbox(), Naps()
+    now = datetime(2026, 9, 24, 20, 5, tzinfo=TZ)
+    await run_nudges_job(ops, store, send=out, now=now, sleep=naps)       # no exception, no text
+    assert out.sent == [] and naps.taken == [5, 20] and store.kv_get("last_scan") is None

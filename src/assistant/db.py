@@ -272,6 +272,13 @@ class Store:
         ).fetchall()
         return [bytes(r["payload"]) for r in rows]
 
+    def has_messages_after(self, conversation_id: str, at: str) -> bool:
+        """Did any turn get saved after this ISO timestamp? (Is a proposal from then still the last thing said?)"""
+        r = self.conn.execute(
+            "SELECT 1 FROM messages WHERE conversation_id=? AND created_at>? LIMIT 1", (conversation_id, at)
+        ).fetchone()
+        return r is not None
+
     # -- phase 2: nudges and snoozes ----------------------------------------
 
     def sent_nudges(self) -> set[str]:

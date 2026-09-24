@@ -285,6 +285,17 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         return ctx.deps.delete_event(query)
 
     @agent.tool
+    async def answer_proposal(ctx: RunContext[ChatOps], approved: bool) -> str:
+        """Answer the proposal a scheduled job is waiting on (it's quoted in your context, if any).
+        Only when Faith clearly says yes or no to *that* proposal; a bare "ok" mid-conversation is
+        not an answer to it.
+
+        Args:
+            approved: True for yes (link and add), False for no (skip).
+        """
+        return await ctx.deps.answer_proposal(approved)
+
+    @agent.tool
     def undo(ctx: RunContext[ChatOps]) -> str:
         """Reverse the most recent write (add, complete, reschedule, snooze, remember)."""
         return ctx.deps.undo()
