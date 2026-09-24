@@ -53,7 +53,7 @@ async def test_persona_and_live_context_reach_the_model(tmp_path):
     with agent.override(model=FunctionModel(fn)):
         await agent.run("hi", deps=ops)
     assert "you are juno" in seen["instructions"]
-    assert "now: wed sep 23, 10:00am" in seen["instructions"]
+    assert "timezone: america/los_angeles" in seen["instructions"] and "now:" not in seen["instructions"]
     assert "courses: ENGR 40M" in seen["instructions"]
 
 
@@ -113,6 +113,8 @@ def test_agent_uses_low_reasoning_effort_and_no_sampling_params():
     assert settings.get("openai_reasoning_effort") == "low"
     assert "temperature" not in settings
     assert settings.get("timeout") == 60
+    assert settings.get("openai_reasoning_context") == "current_turn"     # earlier turns' reasoning isn't re-billed
+    assert settings.get("openai_prompt_cache_key") == "juno"
 
 
 async def test_chat_session_gives_up_after_the_run_timeout(tmp_path):
@@ -147,7 +149,7 @@ async def test_persona_is_reloaded_every_run_when_given_a_loader(tmp_path):
         persona["text"] = "version two"
         await agent.run("hi", deps=ops)
     assert "version one" in seen[0] and "version two" in seen[1]
-    assert seen[1].index("version two") < seen[1].index("now:")   # persona before live context
+    assert seen[1].index("version two") < seen[1].index("timezone:")   # persona before live context
 
 
 async def test_web_search_is_a_native_tool_when_enabled(tmp_path):
@@ -185,3 +187,60 @@ async def test_read_link_tool_goes_through_chat_ops(tmp_path):
         result = await agent.run("is this the right form? https://example.com/f", deps=ops)
     returns = [p for m in messages for p in getattr(m, "parts", []) if isinstance(p, ToolReturnPart)]
     assert result.output == "read it" and "url: https://example.com/f" in returns[0].content
+
+
+async def test_previous_turns_reach_the_model_as_plain_conversation(tmp_path):
+    """Tool calls, tool output and reasoning from earlier turns are not re-sent: they were the bulk of every request."""
+    from pydantic_ai.messages import ThinkingPart, UserPromptPart
+
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    seen: list = []
+
+    def fn(messages, info: AgentInfo) -> ModelResponse:
+        seen.append(messages)
+        if any(isinstance(p, ToolReturnPart) for p in messages[-1].parts):
+            return ModelResponse(parts=[ThinkingPart("", id="rs_2"), TextPart("two things", id="msg_2")])
+        if any(isinstance(p, UserPromptPart) and "due" in str(p.content) for p in messages[-1].parts):
+            return ModelResponse(parts=[ThinkingPart("hmm", id="rs_1"), ToolCallPart("get_tasks", {"scope": "today"}, tool_call_id="c1")])
+        return ModelResponse(parts=[TextPart("np")])
+
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    with agent.override(model=FunctionModel(fn)):
+        assert await session.handle("what's due") == "two things"
+        assert await session.handle("thanks") == "np"
+    previous = seen[-1][:-1]
+    assert [type(p).__name__ for m in previous for p in m.parts] == ["UserPromptPart", "TextPart"]
+
+
+async def test_the_time_travels_with_her_message_not_the_instructions(tmp_path):
+    """The instructions stay byte-identical between requests so the provider's prompt cache hits;
+    the only thing that changes every minute, the clock, rides on the user message instead."""
+    from pydantic_ai.messages import UserPromptPart
+
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    seen: dict = {}
+
+    def fn(messages, info: AgentInfo) -> ModelResponse:
+        seen["instructions"] = messages[-1].instructions
+        seen["prompt"] = next(p.content for p in messages[-1].parts if isinstance(p, UserPromptPart))
+        return ModelResponse(parts=[TextPart("ok")])
+
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    with agent.override(model=FunctionModel(fn)):
+        await session.handle("hi")
+    assert seen["prompt"] == "[wed sep 23, 10:00am] hi"
+    assert "now:" not in seen["instructions"] and "timezone: america/los_angeles" in seen["instructions"]
+
+
+async def test_daily_usage_is_recorded_for_status(tmp_path):
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    with agent.override(model=FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("ok")]))):
+        await session.handle("hi")
+        await session.handle("hi again")
+    assert store.kv_get("requests:2026-09-23") == "2"
+    assert int(store.kv_get("tokens_in:2026-09-23")) > 0
+    assert store.kv_get("tokens_cached:2026-09-23") == "0"

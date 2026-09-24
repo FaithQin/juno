@@ -40,7 +40,10 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         instructions=persona if isinstance(persona, str) else None,
         # Low reasoning effort: this is a chat assistant, not a proof. Default effort spent ~12s
         # thinking per turn in testing. No temperature: ignored (with a warning) when reasoning is on.
-        model_settings=OpenAIResponsesModelSettings(max_tokens=700, timeout=60, openai_reasoning_effort="low"),
+        # current_turn: earlier turns' reasoning isn't replayed and re-billed. The cache key groups
+        # juno's requests so the shared prefix (persona, tools, history) is served from OpenAI's cache.
+        model_settings=OpenAIResponsesModelSettings(max_tokens=700, timeout=60, openai_reasoning_effort="low",
+                                                    openai_reasoning_context="current_turn", openai_prompt_cache_key="juno"),
         retries=2,
         defer_model_check=True,     # no API key needed to import or test
     )

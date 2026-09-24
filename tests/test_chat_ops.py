@@ -136,7 +136,7 @@ def test_remember_and_forget_show_up_in_context(tmp_path):
     ops, store, _ = make_ops(tmp_path)
     assert ops.remember("ENGR 40M lab is Tuesday 3-6 in Packard 051") == "noted"
     ctx = ops.context_block()
-    assert "now: wed sep 23, 10:00am (america/los_angeles)" in ctx
+    assert "timezone: america/los_angeles" in ctx and "now:" not in ctx     # the clock rides on her message (cacheable prefix)
     assert "courses: ENGR 40M, CS 106B, CME 102, MATSCI 88Q, EE 310, EE 100" in ctx
     assert "- ENGR 40M lab is Tuesday 3-6 in Packard 051" in ctx
     assert ops.forget("lab") == "forgot: ENGR 40M lab is Tuesday 3-6 in Packard 051"

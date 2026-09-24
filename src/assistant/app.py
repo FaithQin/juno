@@ -143,13 +143,18 @@ async def serve(rt: Runtime) -> None:
     started_at = now_utc()
 
     def status_text() -> str:
+        now = now_utc()
         last_scan = rt.store.kv_get("last_scan")
         sync = rt.store.last_run("sync")
+        day = now.astimezone(rt.settings.tz).date().isoformat()
+        usage = None
+        if rt.store.kv_get(f"requests:{day}"):
+            usage = tuple(int(rt.store.kv_get(f"{k}:{day}") or 0) for k in ("requests", "tokens_in", "tokens_cached"))
         return describe_runtime(
             hostname=socket.gethostname(), in_docker=Path("/.dockerenv").exists(), version=__version__,
-            started_at=started_at, now=now_utc(), tz=rt.settings.tz,
+            started_at=started_at, now=now, tz=rt.settings.tz,
             last_scan=datetime.fromisoformat(last_scan) if last_scan else None,
-            last_sync_at=sync[0] if sync else None, last_sync_ok=sync[1] if sync else None,
+            last_sync_at=sync[0] if sync else None, last_sync_ok=sync[1] if sync else None, usage_today=usage,
         )
 
     channel = TelegramChannel(rt.settings.telegram_bot_token, rt.settings.allowed_chat_ids, rt.session.handle,

@@ -578,9 +578,8 @@ class ChatOps:
     # ----------------------------------------------------------------------
 
     def context_block(self) -> str:
-        local = self._local(self.now())
-        lines = [
-            f"now: {local.strftime('%a %b %-d, %-I:%M%p').lower()} ({str(self.tz).lower()})",
+        lines = [   # nothing here may change minute to minute: the whole block is part of the provider's cached prefix
+            f"timezone: {str(self.tz).lower()}",
             f"courses: {self._courses_list()}",
         ]
         facts = self.store.facts()

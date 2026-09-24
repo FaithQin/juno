@@ -32,3 +32,29 @@ def test_small_or_recent_output_is_left_alone():
     assert [len(p.content) for p in returns(out)] == [2000, 2000]
     out = trim_old_tool_returns(convo(6, size=100))
     assert [len(p.content) for p in returns(out)] == [100] * 6
+
+
+# -- previous turns are re-sent as just the conversation: no tool traffic, no reasoning ----------
+
+from pydantic_ai.messages import ThinkingPart
+
+from assistant.chat import compact_previous_turns
+
+
+def test_compact_previous_turns_keeps_only_what_she_and_juno_said():
+    msgs = [
+        ModelRequest(parts=[UserPromptPart("hi")]),
+        ModelResponse(parts=[ThinkingPart("", id="rs_1", signature="sig"), ToolCallPart("get_tasks", {}, tool_call_id="c1")]),
+        ModelRequest(parts=[ToolReturnPart("get_tasks", "3 tasks", tool_call_id="c1")]),
+        ModelResponse(parts=[ThinkingPart("", id="rs_2"), TextPart("three things today", id="msg_1")]),
+    ]
+    out = compact_previous_turns(msgs)
+    assert [type(p).__name__ for m in out for p in m.parts] == ["UserPromptPart", "TextPart"]
+    assert out[1].parts[0].content == "three things today" and out[1].parts[0].id is None   # replayed as plain text, not by id
+    assert len(msgs) == 4 and isinstance(msgs[1].parts[0], ThinkingPart)                    # input untouched
+
+
+def test_compact_previous_turns_leaves_a_tool_call_still_waiting_on_her_alone():
+    pending = ModelResponse(parts=[ThinkingPart("", id="rs_9"), ToolCallPart("browser_submit", {"ref": 3}, tool_call_id="c9")])
+    out = compact_previous_turns([ModelRequest(parts=[UserPromptPart("sign me up")]), pending])
+    assert out[1] is pending

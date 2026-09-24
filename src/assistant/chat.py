@@ -12,7 +12,10 @@ from dataclasses import replace
 from pydantic_ai import (
     Agent, DeferredToolRequests, DeferredToolResults, ModelMessagesTypeAdapter, ToolDenied, UsageLimits,
 )
-from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
+from pydantic_ai.messages import (
+    ModelMessage, ModelRequest, ModelResponse, RetryPromptPart, SystemPromptPart, TextPart, ToolCallPart, ToolReturnPart,
+    UserPromptPart,
+)
 
 from .chat_ops import ChatOps
 from .db import Store
@@ -47,6 +50,39 @@ def trim_old_tool_returns(messages: list[ModelMessage]) -> list[ModelMessage]:
                 parts.append(p)
         out.append(replace(m, parts=parts))
     return out
+
+
+def compact_previous_turns(messages: list[ModelMessage]) -> list[ModelMessage]:
+    """Earlier turns come back as conversation only: what she said and what juno answered.
+
+    Every request re-sends the whole history, and most of it was never the conversation: tool
+    calls, tool output and the model's own encrypted reasoning from turns that are over. Those
+    were the bulk of a 56k-token request. Dropping them costs nothing the model can't fetch again
+    with one tool call. A response whose tool call is still waiting on her yes/no is kept whole,
+    because the provider needs that call, and the reasoning that led to it, exactly as it was.
+    Kept text loses its provider id so it is replayed as plain text rather than by reference."""
+    answered = {
+        p.tool_call_id
+        for m in messages if isinstance(m, ModelRequest)
+        for p in m.parts if isinstance(p, (ToolReturnPart, RetryPromptPart)) and p.tool_call_id
+    }
+    out: list[ModelMessage] = []
+    for m in messages:
+        if isinstance(m, ModelRequest):
+            parts = [p for p in m.parts if isinstance(p, (UserPromptPart, SystemPromptPart))]
+        elif isinstance(m, ModelResponse):
+            if any(isinstance(p, ToolCallPart) and p.tool_call_id not in answered for p in m.parts):
+                out.append(m)
+                continue
+            parts = [replace(p, id=None) for p in m.parts if isinstance(p, TextPart)]
+        else:
+            out.append(m)
+            continue
+        if parts:
+            out.append(replace(m, parts=parts))
+    return out
+
+
 DEFAULT_RUN_TIMEOUT = timedelta(seconds=180)   # whole turn, all tool calls included
 
 YES = {"yes", "y", "yep", "yeah", "yea", "ok", "okay", "go", "go ahead", "do it", "sure", "confirm", "👍", "please"}
@@ -108,20 +144,31 @@ class ChatSession:
         history = []
         for blob in self.store.load_messages(self.conversation_id, since=now - self.window):
             history.extend(ModelMessagesTypeAdapter.validate_json(blob))
-        return history
+        return compact_previous_turns(history)
+
+    def _stamp(self, now) -> str:
+        """The clock rides on her message ("[wed sep 23, 10:00am] hi"), not in the instructions:
+        the instructions then stay identical from one request to the next, which is what lets the
+        provider serve the persona, tools and history from its prompt cache."""
+        return now.astimezone(self.ops.tz).strftime("%a %b %-d, %-I:%M%p").lower()
+
+    def _bump(self, key: str, n: int) -> None:
+        self.store.kv_set(key, str(int(self.store.kv_get(key) or 0) + n))
 
     async def _run(self, text: str | None, *, deferred=None):
         now = self.ops.now()
+        prompt = f"[{self._stamp(now)}] {text}" if text is not None else None
         result = await asyncio.wait_for(
-            self.agent.run(text, deps=self.ops, message_history=self._history(now),
+            self.agent.run(prompt, deps=self.ops, message_history=self._history(now),
                            deferred_tool_results=deferred, usage_limits=self.usage_limits),
             timeout=self.run_timeout.total_seconds(),
         )
         self.store.save_messages(self.conversation_id, result.new_messages_json(), at=now)
         usage = result.usage() if callable(result.usage) else result.usage
-        total = int(getattr(usage, "total_tokens", 0) or 0)
-        key = f"tokens:{now.astimezone(self.ops.tz).date().isoformat()}"
-        self.store.kv_set(key, str(int(self.store.kv_get(key) or 0) + total))
+        day = now.astimezone(self.ops.tz).date().isoformat()
+        for key, attr in (("tokens", "total_tokens"), ("tokens_in", "input_tokens"),
+                          ("tokens_cached", "cache_read_tokens"), ("requests", "requests")):
+            self._bump(f"{key}:{day}", int(getattr(usage, attr, 0) or 0))
         return result
 
     def _describe(self, call) -> str:
