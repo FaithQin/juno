@@ -1,5 +1,7 @@
 # juno, packaged. Build context is the project folder; secrets and data are mounted at run time.
-FROM python:3.13-slim
+# The Playwright image ships Chromium and its system libraries; its tag must match the
+# playwright version in pyproject.toml.
+FROM mcr.microsoft.com/playwright/python:v1.63.0-noble
 
 ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \

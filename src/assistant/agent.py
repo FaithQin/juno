@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Callable, Literal
 
-from pydantic_ai import Agent, RunContext, WebSearchTool, WebSearchUserLocation
+from pydantic_ai import Agent, DeferredToolRequests, RunContext, WebSearchTool, WebSearchUserLocation
 from pydantic_ai.capabilities import NativeTool
 from pydantic_ai.models.openai import OpenAIResponsesModelSettings
 
@@ -34,7 +34,7 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
     agent: Agent[ChatOps, str] = Agent(
         model,
         deps_type=ChatOps,
-        output_type=str,
+        output_type=[str, DeferredToolRequests],   # a run may pause to ask Faith before submitting a form
         capabilities=capabilities,
         instructions=persona if isinstance(persona, str) else None,
         # Low reasoning effort: this is a chat assistant, not a proof. Default effort spent ~12s
@@ -83,6 +83,64 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
             url: a full http(s) URL.
         """
         return ctx.deps.read_link(url)
+
+    # -- the real browser: logged-in sites, clicking, forms --------------------
+
+    @agent.tool
+    async def browse(ctx: RunContext[ChatOps], url: str) -> str:
+        """Open a page in the real browser and return its text plus numbered clickable elements.
+        Use this for logged-in sites (Gradescope, Paperless, Ed, Canvas pages) and whenever you
+        need to click or fill something. For a plain public page, read_link is cheaper.
+
+        Args:
+            url: a full http(s) URL.
+        """
+        return await ctx.deps.browse(url)
+
+    @agent.tool
+    async def browser_click(ctx: RunContext[ChatOps], ref: int) -> str:
+        """Click a link, tab or ordinary button by its [ref] from the last snapshot. Not for buttons
+        that submit or sign up: use browser_submit for those.
+
+        Args:
+            ref: the number in [brackets] from the snapshot.
+        """
+        return await ctx.deps.browser_click(ref)
+
+    @agent.tool
+    async def browser_type(ctx: RunContext[ChatOps], ref: int, text: str) -> str:
+        """Type into a text field by its [ref] (replaces what's there).
+
+        Args:
+            ref: the number in [brackets] from the snapshot.
+            text: what to type.
+        """
+        return await ctx.deps.browser_type(ref, text)
+
+    @agent.tool
+    async def browser_select(ctx: RunContext[ChatOps], ref: int, value: str) -> str:
+        """Choose an option in a dropdown by its [ref].
+
+        Args:
+            ref: the number in [brackets] from the snapshot.
+            value: the option's visible label or value.
+        """
+        return await ctx.deps.browser_select(ref, value)
+
+    @agent.tool(requires_approval=True)
+    async def browser_submit(ctx: RunContext[ChatOps], ref: int) -> str:
+        """Click a button that submits a form, signs up, registers, sends or pays. Faith is asked
+        for a yes before this runs, so fill everything in first and describe what will happen.
+
+        Args:
+            ref: the number in [brackets] of the submit button.
+        """
+        return await ctx.deps.browser_submit(ref)
+
+    @agent.tool
+    async def browser_back(ctx: RunContext[ChatOps]) -> str:
+        """Go back one page in the browser."""
+        return await ctx.deps.browser_back()
 
     # -- writes: act, then echo; every one is undoable ------------------------
 

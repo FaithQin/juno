@@ -3,6 +3,8 @@ services:
     build: .
     container_name: juno
     restart: unless-stopped          # survives crashes and server reboots
+    ipc: host                        # Playwright's recommendation: Chromium can crash without it
+    shm_size: "512m"
     env_file: .env
     environment:
       ASSISTANT_HOME: /app

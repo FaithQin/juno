@@ -134,6 +134,72 @@ def cmd_gcal_auth(_args) -> int:
     return 0
 
 
+def cmd_browser_login(args) -> int:
+    """Open a real browser window on this Mac, let Faith log in (Duo and all), save the session."""
+    import asyncio
+
+    from .config import project_root
+    from .sites import SITES, looks_like_login, session_path
+
+    site = SITES.get(args.site)
+    if site is None:
+        sys.exit(f"unknown site {args.site!r}. choose one of: {', '.join(SITES)}")
+    path = session_path(project_root() / "data", site)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    async def run():
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=False)
+            context = await browser.new_context(storage_state=str(path) if path.exists() else None,
+                                                viewport={"width": 1280, "height": 900})
+            page = await context.new_page()
+            await page.goto(site.login_url)
+            print(f"a browser window opened at {site.login_url}")
+            print(f"log in to {site.name} there (Duo included). when you can see you're logged in, come back here and press Enter.")
+            await asyncio.get_running_loop().run_in_executor(None, input)
+            if looks_like_login(page.url, site):
+                print(f"warning: the browser is still on a login page ({page.url}); saving anyway")
+            await context.storage_state(path=str(path))
+            path.chmod(0o600)
+            await browser.close()
+        print(f"saved {path}")
+        print("ship it to the server with: scripts/deploy.sh root@SERVER_IP")
+
+    asyncio.run(run())
+    return 0
+
+
+def cmd_browser_check(_args) -> int:
+    """For every saved session, open the site and report whether it's still logged in."""
+    import asyncio
+
+    from .browser import BrowserSession
+    from .config import project_root
+    from .sites import SITES, session_path
+
+    data = project_root() / "data"
+
+    async def run():
+        session = BrowserSession(data_dir=data, headless=True)
+        try:
+            for key, site in SITES.items():
+                if not session_path(data, site).exists():
+                    print(f"{key}: no saved session (run: uv run assistant browser-login {key})")
+                    continue
+                try:
+                    snap = await session.open(site.home_url)
+                    print(f"{key}: {'LOGIN NEEDED' if snap.login_required else 'logged in'} ({snap.title or snap.url})")
+                except Exception as e:
+                    print(f"{key}: error {type(e).__name__}: {e}")
+        finally:
+            await session.stop()
+
+    asyncio.run(run())
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="assistant", description="Faith's personal assistant")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -151,10 +217,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("brief", help="print today's morning brief")
     sub.add_parser("nudges", help="show which nudges would fire right now")
     sub.add_parser("gcal-auth", help="one-time Google Calendar authorization")
+    p_login = sub.add_parser("browser-login", help="log in to a site in a real browser window and save the session")
+    p_login.add_argument("site", help="gradescope | paperless | ed | canvas")
+    sub.add_parser("browser-check", help="report which saved sessions are still logged in")
 
     args = parser.parse_args(argv)
     handlers = {"courses": cmd_courses, "check": cmd_check, "sync": cmd_sync, "run": cmd_run, "chat": cmd_chat,
-                "brief": cmd_brief, "nudges": cmd_nudges, "gcal-auth": cmd_gcal_auth}
+                "brief": cmd_brief, "nudges": cmd_nudges, "gcal-auth": cmd_gcal_auth,
+                "browser-login": cmd_browser_login, "browser-check": cmd_browser_check}
     return handlers[args.command](args)
 
 

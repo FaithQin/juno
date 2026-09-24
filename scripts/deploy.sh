@@ -16,4 +16,8 @@ if ! ssh "$HOST" "[ -f $DIR/data/assistant.sqlite3 ]"; then
   echo "first deploy: copying data/ (database + google token)"
   rsync -az ./data/ "$HOST:$DIR/data/"
 fi
+if [ -d ./data/browser ]; then
+  echo "shipping saved browser logins"
+  rsync -az ./data/browser/ "$HOST:$DIR/data/browser/"   # made on the Mac, consumed on the server
+fi
 ssh "$HOST" "cd $DIR && docker compose up -d --build && sleep 3 && docker compose logs --tail=15 juno"

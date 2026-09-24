@@ -15,6 +15,7 @@ juno: a school assistant that grows into a general one. Python 3.12+, managed wi
 | Due-date nudges (8pm the evening before, 2h before) | every 10 min | no |
 | Morning brief (classes, events, due today/tomorrow, overdue) | 7:00 daily | no |
 | Chat over Telegram: what's due, add/complete/move a task, snooze, remember, undo | when you text | yes (gpt-6-sol) |
+| Open links, search the web, and drive a real browser on Gradescope, Paperless, Ed, Canvas | when you text | yes |
 
 ## Setup, once
 
@@ -55,7 +56,17 @@ uv run assistant gcal-auth
 
 A browser opens once. The token is saved to `data/google_token.json` and refreshes itself.
 
-### 5. Install and test
+### 5. Browser logins (Gradescope, Paperless, Ed, Canvas)
+
+```bash
+uv run playwright install chromium
+uv run assistant browser-login gradescope     # a window opens; log in with Duo; press Enter
+```
+
+Repeat for `paperless`, `ed`, `canvas`. Then `scripts/deploy.sh root@IP` ships the sessions.
+`uv run assistant browser-check` tells you which ones are still valid.
+
+### 6. Install and test
 
 ```bash
 uv sync && uv run pytest
@@ -132,5 +143,6 @@ tests/                  fakes for everything; no network
 5. OwnTracks location, running-late alerts
 6. Gradescope scraper (if email + password login works)
 7. Deploy: Docker on a DigitalOcean droplet ✅ (files ready; see docs/03-deploy.md)
-8. Full browser (Playwright) for behind-login sites and forms
-9. iMessage channel via Photon (needs a Node sidecar or a Python send path)
+8. Full browser (Playwright): read and act behind logins, submit only with a yes ✅ (see docs/04-browser.md)
+9. Canvas calendar events → Google Calendar with dedup; CS 106B site scrape
+10. iMessage channel via Photon (needs a Node sidecar or a Python send path)

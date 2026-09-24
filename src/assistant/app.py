@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .agent import build_agent
+from .browser import BrowserSession
 from .chat import ChatSession
 from .chat_ops import ChatOps
 from .config import AppConfig, CoursesConfig, Settings, load_app_config, load_courses, project_root
@@ -75,6 +76,7 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
         courses=[c.code for c in courses_cfg.courses], sections=sections,
         classes_project_id=project.id, calendar_names=app_cfg.brief.calendars, now=now_utc,
         web=WebReader(canvas_url=settings.canvas_url, canvas_token=settings.canvas_token),
+        browser=BrowserSession(data_dir=project_root() / "data", headless=True),   # starts on first use
     )
     agent = build_agent(app_cfg.agent.chat_model, persona=load_persona,   # loader: persona.md is re-read per message
                         web_search=app_cfg.agent.web_search)
@@ -117,7 +119,12 @@ async def serve(rt: Runtime) -> None:
     async def brief_job():
         await run_brief_job(rt.ops, send=channel.send)
 
-    sched = build_scheduler(rt.app_cfg, rt.settings.tz, sync=sync_job, nudges=nudges_job, brief=brief_job)
+    async def browser_idle_job():
+        if rt.ops.browser is not None and await rt.ops.browser.close_idle(600):
+            log.info("closed the idle browser page")
+
+    sched = build_scheduler(rt.app_cfg, rt.settings.tz, sync=sync_job, nudges=nudges_job, brief=brief_job,
+                            browser_idle=browser_idle_job)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -132,3 +139,5 @@ async def serve(rt: Runtime) -> None:
     finally:
         sched.shutdown(wait=False)
         await channel.stop()
+        if rt.ops.browser is not None:
+            await rt.ops.browser.stop()

@@ -16,6 +16,7 @@ dependencies = [
   "google-auth-httplib2>=0.4.2",
   "beautifulsoup4>=4.12",
   "tzdata>=2026.4",
+  "playwright>=1.63.0",
 ]
 
 [project.scripts]

@@ -30,8 +30,9 @@ DUE_ERROR = "error: due must be an ISO date (2026-09-28) or datetime (2026-09-28
 class ChatOps:
     def __init__(self, *, store: Store, todoist, calendar, tz: ZoneInfo, courses: list[str],
                  sections: dict[str, str], classes_project_id: str, calendar_names: list[str],
-                 now: Callable[[], datetime], web=None):
+                 now: Callable[[], datetime], web=None, browser=None):
         self.web = web                        # WebReader, or None when links can't be opened
+        self.browser = browser                # BrowserSession, or None when there is no browser
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -320,6 +321,37 @@ class ChatOps:
         if self.web is None:
             return "i can't open links right now"
         return self.web.read(url)
+
+    # -- the real browser (phase 3) -------------------------------------------
+
+    async def _browser_call(self, action: str, *args) -> str:
+        from .browser import render_snapshot
+
+        if self.browser is None:
+            return "the browser isn't available right now"
+        try:
+            snap = await getattr(self.browser, action)(*args)
+        except Exception as e:
+            return f"browser error: {type(e).__name__}: {str(e).splitlines()[0][:200]}"
+        return render_snapshot(snap, site_key=getattr(self.browser, "site_key", None))
+
+    async def browse(self, url: str) -> str:
+        return await self._browser_call("open", url)
+
+    async def browser_click(self, ref: int) -> str:
+        return await self._browser_call("click", ref)
+
+    async def browser_type(self, ref: int, text: str) -> str:
+        return await self._browser_call("type", ref, text)
+
+    async def browser_select(self, ref: int, value: str) -> str:
+        return await self._browser_call("select", ref, value)
+
+    async def browser_submit(self, ref: int) -> str:
+        return await self._browser_call("submit", ref)
+
+    async def browser_back(self) -> str:
+        return await self._browser_call("back")
 
     # ----------------------------------------------------------------------
     # what the model sees every turn (dynamic instructions)

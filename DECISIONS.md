@@ -109,3 +109,16 @@ Secrets in `.env` with 600 permissions, never committed. Daily token budget once
 | Hosting order | finish web tools → **VPS deploy next**, so juno answers while the Mac is closed |
 | Host | **DigitalOcean** first ($6 droplet, SFO); move to Hetzner when it runs out of room. Docker so the move is one command |
 | Deploy flow | rsync from the Mac (`scripts/deploy.sh`), including `.env`; `data/` copied only on the first deploy; one juno instance at a time |
+
+## Phase 3 decisions (2026-09-23): the browser
+
+| Decision | Choice |
+|---|---|
+| Scope | **Read and act**: open, click, type, select, submit |
+| Logins | **One-time login on the Mac** (`browser-login <site>`), storage state shipped by `deploy.sh`; juno asks for a re-login when a snapshot lands on a login page. No passwords anywhere in juno |
+| Sites | Gradescope, Paperless (CS 106B), Ed Discussion, Canvas web pages |
+| Submitting | **Always asks first** (`requires_approval` on `browser_submit`); yes/no over Telegram; any other message cancels the pending click |
+| Reading and filling | autonomous, no confirmation |
+| Memory | one Chromium, one context per site, one page, closed after 10 idle minutes; **resize the droplet to 2 GB if it runs out** |
+| Sandbox | Chromium runs as root without its sandbox inside the container (accepted for now; hardening later) |
+| Per-message limits | raised to 14 model requests / 120k tokens so multi-step browsing fits |

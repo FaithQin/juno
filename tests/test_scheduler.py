@@ -23,3 +23,10 @@ def test_build_scheduler_registers_sync_nudges_and_brief():
     assert isinstance(jobs["brief"].trigger, CronTrigger)
     assert "hour='7'" in str(jobs["brief"].trigger) and "minute='0'" in str(jobs["brief"].trigger)
     # coalesce / max_instances come from job_defaults and are applied when the scheduler starts
+
+
+def test_browser_idle_job_is_optional():
+    cfg = AppConfig()
+    sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, browser_idle=noop)
+    jobs = {j.id: j for j in sched.get_jobs()}
+    assert "browser_idle" in jobs and jobs["browser_idle"].trigger.interval.total_seconds() == 300
