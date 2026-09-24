@@ -174,6 +174,34 @@ def cmd_gradescope(args) -> int:
     return 0
 
 
+def cmd_calendar(args) -> int:
+    """Run the Canvas events → Google Calendar sync once, now."""
+    from .app import build_calendar_sync, build_runtime, with_cleanup
+
+    rt = build_runtime()
+
+    async def to_console(text):
+        print(text)
+
+    async def to_telegram(text):
+        from telegram import Bot
+
+        print(text)
+        async with Bot(rt.settings.telegram_bot_token) as bot:
+            for chat_id in sorted(rt.settings.allowed_chat_ids):
+                await bot.send_message(chat_id, text)
+
+    send = to_console if args.print or not rt.settings.telegram_bot_token else to_telegram
+    job = build_calendar_sync(rt, send)
+
+    async def go():
+        await job.run()
+        print("(proposal sent; answer it in telegram)" if rt.store.kv_get("pending_job") else "(nothing to report)")
+
+    run_one_shot(with_cleanup(rt.ops, go()))
+    return 0
+
+
 def cmd_browser_login(args) -> int:
     """Open a real browser window on this Mac, let Faith log in (Duo and all), save the session."""
     import asyncio
@@ -290,11 +318,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("browser-check", help="report which saved sessions are still logged in")
     p_gs = sub.add_parser("gradescope", help="run the Gradescope → Todoist sync once, now")
     p_gs.add_argument("--print", action="store_true", help="print instead of texting")
+    p_cal = sub.add_parser("calendar", help="run the Canvas events → Google Calendar sync once, now")
+    p_cal.add_argument("--print", action="store_true", help="print instead of texting")
 
     args = parser.parse_args(argv)
     handlers = {"courses": cmd_courses, "check": cmd_check, "sync": cmd_sync, "run": cmd_run, "chat": cmd_chat,
                 "brief": cmd_brief, "nudges": cmd_nudges, "gcal-auth": cmd_gcal_auth,
-                "browser-login": cmd_browser_login, "browser-check": cmd_browser_check, "gradescope": cmd_gradescope}
+                "browser-login": cmd_browser_login, "browser-check": cmd_browser_check, "gradescope": cmd_gradescope, "calendar": cmd_calendar}
     return handlers[args.command](args)
 
 

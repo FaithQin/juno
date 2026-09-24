@@ -203,3 +203,63 @@ def test_ed_announcements_by_course(tmp_path):
     assert ops.ed_announcements("physics") == "'physics' isn't one of your courses (ENGR 40M, CS 106B, CME 102, MATSCI 88Q, EE 310, EE 100)"
     ops.ed._courses = []
     assert ops.ed_announcements("cs106b") == "i can't find CS 106B on ed"
+
+
+# --- calendar tools and deletes (phase 6) -----------------------------------------------
+
+from assistant.brief import Event as _Event
+
+
+def _ev(title, h, m=0, end_h=None, end_m=0, day=23, calendar="Stanford", location=None):
+    start = datetime(2026, 9, day, h, m, tzinfo=TZ)
+    end = datetime(2026, 9, day, end_h, end_m, tzinfo=TZ) if end_h else start + timedelta(hours=1)
+    return _Event(title, start, end, location, False, calendar)
+
+
+def make_cal_ops(tmp_path, events=()):
+    from fakes import FakeCalendar
+    ops, store, todoist = make_ops(tmp_path, SAMPLE)
+    ops.calendar = FakeCalendar({date(2026, 9, 23): list(events)})
+    ops.calendar_names = ["Stanford", "TA", "faithclairvoyant333@gmail.com"]
+    return ops, store, ops.calendar
+
+
+def test_add_event_defaults_to_primary_and_one_hour(tmp_path):
+    ops, store, cal = make_cal_ops(tmp_path)
+    reply = ops.add_event("Coffee with Nick", start="2026-09-24T09:00", location="Coupa")
+    assert reply == "added: Coffee with Nick, thu sep 24 9:00–10:00am at Coupa (personal calendar)"
+    (e,) = [e for e in cal.events.values() if e.title == "Coffee with Nick"]
+    assert e.calendar_id == "primary" and e.end == datetime(2026, 9, 24, 10, 0, tzinfo=TZ)
+    assert ops.undo() == "undone: deleted Coffee with Nick" and cal.deleted == [e.id]
+
+
+def test_add_event_on_a_named_calendar_with_explicit_end(tmp_path):
+    ops, store, cal = make_cal_ops(tmp_path)
+    reply = ops.add_event("ENGR 40M OH", start="2026-09-25T15:00", end="2026-09-25T16:00", calendar="TA", location="Packard 175")
+    assert reply == "added: ENGR 40M OH, fri sep 25 3:00–4:00pm at Packard 175 (TA)"
+    assert ops.add_event("x", start="2026-09-25T15:00", calendar="Nope") == "no calendar called 'Nope' (i know Stanford, TA, faithclairvoyant333@gmail.com)"
+    assert ops.add_event("x", start="friday").startswith("error: start must be")
+
+
+def test_move_and_delete_event_with_undo(tmp_path):
+    ops, store, cal = make_cal_ops(tmp_path, [_ev("CS 106B", 12, 30, 13, 20), _ev("CME 102 OH — Yifa Yu", 11, 0, 13, 0, calendar="TA")])
+    assert ops.move_event("cme 102 oh", start="2026-09-23T14:00") == "moved: CME 102 OH — Yifa Yu → wed sep 23 2:00–4:00pm"
+    moved = next(e for e in cal.events.values() if e.title.startswith("CME 102 OH"))
+    assert moved.start == datetime(2026, 9, 23, 14, 0, tzinfo=TZ) and moved.end == datetime(2026, 9, 23, 16, 0, tzinfo=TZ)
+    assert ops.undo() == "undone: CME 102 OH — Yifa Yu back to wed sep 23 11:00am–1:00pm"
+
+    assert ops.delete_event("cs 106b") == "deleted: CS 106B (wed sep 23 12:30–1:20pm)"
+    assert not any(e.title == "CS 106B" for e in cal.events.values())
+    assert ops.undo() == "undone: CS 106B is back on wed sep 23"
+    assert any(e.title == "CS 106B" and e.start == datetime(2026, 9, 23, 12, 30, tzinfo=TZ) for e in cal.events.values())
+    assert ops.delete_event("physics") == "no event matches 'physics' in the next two weeks"
+
+
+def test_delete_task_with_undo(tmp_path):
+    ops, store, todoist = make_ops(tmp_path, SAMPLE)
+    assert ops.delete_task("assignment 1") == "deleted: CS 106B: Assignment 1 (Paperless)"
+    assert not any(t.content.startswith("CS 106B: Assignment 1") for t in todoist.tasks("CLASSES"))
+    assert ops.undo() == "undone: CS 106B: Assignment 1 (Paperless) is back"
+    back = next(t for t in todoist.tasks("CLASSES") if t.content.startswith("CS 106B: Assignment 1"))
+    assert back.section_id == "S2" and back.due.date == datetime(2026, 10, 6, 6, 59, tzinfo=timezone.utc)
+    assert ops.delete_task("engr 40m").startswith("which one?")

@@ -27,7 +27,7 @@ def _parse_point(obj: dict, tz: ZoneInfo) -> tuple[datetime, bool]:
     return datetime.combine(date.fromisoformat(obj["date"]), time(0, 0), tzinfo=tz), True
 
 
-def events_from_api(items: list[dict], *, calendar: str, tz: ZoneInfo) -> list[Event]:
+def events_from_api(items: list[dict], *, calendar: str, tz: ZoneInfo, calendar_id: str | None = None) -> list[Event]:
     events: list[Event] = []
     for it in items:
         if it.get("status") == "cancelled" or "start" not in it:
@@ -36,6 +36,8 @@ def events_from_api(items: list[dict], *, calendar: str, tz: ZoneInfo) -> list[E
         end = None
         if not all_day and it.get("end"):
             end, _ = _parse_point(it["end"], tz)
+        private = (it.get("extendedProperties") or {}).get("private") or {}
+        canvas_id = private.get("canvas_id")
         events.append(Event(
             title=(it.get("summary") or "").strip() or "(untitled)",
             start=start,
@@ -43,8 +45,33 @@ def events_from_api(items: list[dict], *, calendar: str, tz: ZoneInfo) -> list[E
             location=it.get("location"),
             all_day=all_day,
             calendar=calendar,
+            id=it.get("id"),
+            calendar_id=calendar_id,
+            description=it.get("description"),
+            canvas_id=int(canvas_id) if str(canvas_id or "").isdigit() else None,
         ))
     return events
+
+
+def event_body(*, title: str, start: datetime, end: datetime | None = None, location: str | None = None,
+               description: str | None = None, canvas_id: int | None = None, source_url: str | None = None) -> dict:
+    """The JSON Google expects for insert/patch. End defaults to one hour after start."""
+    end = end or start + timedelta(hours=1)
+    tzname = str(start.tzinfo) if isinstance(start.tzinfo, ZoneInfo) else "America/Los_Angeles"
+    body: dict = {
+        "summary": title,
+        "start": {"dateTime": start.isoformat(timespec="seconds"), "timeZone": tzname},
+        "end": {"dateTime": end.isoformat(timespec="seconds"), "timeZone": tzname},
+    }
+    if location:
+        body["location"] = location
+    if description:
+        body["description"] = description
+    if canvas_id is not None:
+        body["extendedProperties"] = {"private": {"canvas_id": str(canvas_id)}}
+    if source_url:
+        body["source"] = {"title": "Canvas", "url": source_url}
+    return body
 
 
 class GoogleCalendar:
@@ -52,6 +79,7 @@ class GoogleCalendar:
         self.credentials_path = credentials_path
         self.token_path = token_path
         self._service = None
+        self._ids: dict[str, str] | None = None
 
     # -- auth ----------------------------------------------------------------
 
@@ -92,16 +120,45 @@ class GoogleCalendar:
     # -- reads ---------------------------------------------------------------
 
     def calendar_ids(self) -> dict[str, str]:
-        """Calendar display name → calendar id."""
+        """Calendar display name → calendar id (cached per process)."""
+        if self._ids is not None:
+            return self._ids
         out: dict[str, str] = {}
         page = None
         while True:
             resp = self.service().calendarList().list(pageToken=page).execute()
             for c in resp.get("items", []):
                 out[c.get("summaryOverride") or c.get("summary", "")] = c["id"]
+                if c.get("primary"):
+                    out.setdefault("primary", c["id"])
             page = resp.get("nextPageToken")
             if not page:
+                self._ids = out
                 return out
+
+    def events_in_window(self, calendar_names: list[str], start: datetime, end: datetime, tz: ZoneInfo) -> list[Event]:
+        ids = self.calendar_ids()
+        events: list[Event] = []
+        for name in calendar_names:
+            cal_id = ids.get(name)
+            if cal_id is None:
+                continue
+            events.extend(events_from_api(self.events_between(cal_id, start, end), calendar=name, tz=tz, calendar_id=cal_id))
+        return sorted(events, key=lambda e: (not e.all_day, e.start))
+
+    # -- writes --------------------------------------------------------------
+
+    def get_event(self, calendar_id: str, event_id: str) -> dict:
+        return self.service().events().get(calendarId=calendar_id, eventId=event_id).execute()
+
+    def create_event(self, calendar_id: str, body: dict) -> dict:
+        return self.service().events().insert(calendarId=calendar_id, body=body).execute()
+
+    def update_event(self, calendar_id: str, event_id: str, patch: dict) -> dict:
+        return self.service().events().patch(calendarId=calendar_id, eventId=event_id, body=patch).execute()
+
+    def delete_event(self, calendar_id: str, event_id: str) -> None:
+        self.service().events().delete(calendarId=calendar_id, eventId=event_id).execute()
 
     def events_between(self, calendar_id: str, start: datetime, end: datetime) -> list[dict]:
         items: list[dict] = []

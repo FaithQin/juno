@@ -126,12 +126,18 @@ class GradescopeConfig(BaseModel):
     every_hours: int = 3
 
 
+class CalendarSyncConfig(BaseModel):
+    target: str = "Stanford"        # Google calendar that receives Canvas events
+    every_minutes: int = 60
+
+
 class AppConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     brief: BriefConfig = Field(default_factory=BriefConfig)
     nudges: NudgesConfig = Field(default_factory=NudgesConfig)
     sync: SyncConfig = Field(default_factory=SyncConfig)
     gradescope: GradescopeConfig = Field(default_factory=GradescopeConfig)
+    calendar: CalendarSyncConfig = Field(default_factory=CalendarSyncConfig)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

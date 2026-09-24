@@ -25,6 +25,7 @@ from .db import Store
 from .ed import EdClient, ed_token_from_session
 from .gcal import GoogleCalendar
 from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, GradescopeSync
+from .calendar_sync import JOB_KIND as CALENDAR_JOB, CalendarSync, canvas_events_from_api
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
 from .status import describe_runtime
 from .todoist_client import TodoistClient
@@ -60,6 +61,21 @@ def _ed_client(settings: Settings) -> EdClient | None:
         return EdClient(settings.ed_api_token)
     token = ed_token_from_session(project_root() / "data" / "browser" / "ed.json")
     return EdClient(token, scheme="x-token") if token else None
+
+
+def build_calendar_sync(rt: "Runtime", send) -> CalendarSync:
+    from canvasapi import Canvas
+
+    codes = [f"course_{c.canvas_id}" for c in rt.courses_cfg.courses if c.canvas_id]
+
+    def fetch_events(start: datetime, end: datetime):
+        api = Canvas(rt.settings.canvas_url, rt.settings.canvas_token)
+        objs = api.get_calendar_events(type="event", context_codes=codes, start_date=start.date().isoformat(),
+                                       end_date=end.date().isoformat(), per_page=100)
+        return canvas_events_from_api(list(objs))
+
+    return CalendarSync(fetch_events=fetch_events, calendar=rt.calendar, store=rt.store, courses_cfg=rt.courses_cfg,
+                        target_calendar=rt.app_cfg.calendar.target, tz=rt.settings.tz, send=send, now=now_utc)
 
 
 def load_persona() -> str:
@@ -167,8 +183,17 @@ async def serve(rt: Runtime) -> None:
         except Exception:
             log.exception("gradescope sync failed")
 
+    calendar_sync = build_calendar_sync(rt, channel.send)
+    rt.session.job_handlers[CALENDAR_JOB] = calendar_sync.approve
+
+    async def calendar_job():
+        try:
+            await calendar_sync.run()
+        except Exception:
+            log.exception("calendar sync failed")
+
     sched = build_scheduler(rt.app_cfg, rt.settings.tz, sync=sync_job, nudges=nudges_job, brief=brief_job,
-                            browser_idle=browser_idle_job, gradescope=gradescope_job)
+                            browser_idle=browser_idle_job, gradescope=gradescope_job, calendar=calendar_job)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

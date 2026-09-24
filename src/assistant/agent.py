@@ -230,6 +230,50 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         return ctx.deps.forget(query)
 
     @agent.tool
+    def delete_task(ctx: RunContext[ChatOps], query: str) -> str:
+        """Delete a task for good (undoable). Only when Faith asks to delete; 'done' means complete_task.
+
+        Args:
+            query: a few words from the task name.
+        """
+        return ctx.deps.delete_task(query)
+
+    @agent.tool
+    def add_event(ctx: RunContext[ChatOps], title: str, start: str, end: str | None = None, location: str | None = None,
+                  calendar: str | None = None, notes: str | None = None) -> str:
+        """Put an event on Faith's Google Calendar.
+
+        Args:
+            title: event title.
+            start: ISO datetime, e.g. 2026-09-25T15:00.
+            end: ISO datetime; omit for one hour.
+            location: room or place, if given.
+            calendar: "Stanford" for classes and exams, "TA" for office hours and help sessions; omit for personal.
+            notes: optional description.
+        """
+        return ctx.deps.add_event(title, start, end=end, location=location, calendar=calendar, notes=notes)
+
+    @agent.tool
+    def move_event(ctx: RunContext[ChatOps], query: str, start: str, end: str | None = None) -> str:
+        """Move an existing event (next two weeks) to a new time.
+
+        Args:
+            query: a few words from the event title.
+            start: new ISO start datetime.
+            end: new ISO end; omit to keep the same duration.
+        """
+        return ctx.deps.move_event(query, start, end=end)
+
+    @agent.tool
+    def delete_event(ctx: RunContext[ChatOps], query: str) -> str:
+        """Delete an event (next two weeks) from Faith's calendar. Undoable.
+
+        Args:
+            query: a few words from the event title.
+        """
+        return ctx.deps.delete_event(query)
+
+    @agent.tool
     def undo(ctx: RunContext[ChatOps]) -> str:
         """Reverse the most recent write (add, complete, reschedule, snooze, remember)."""
         return ctx.deps.undo()

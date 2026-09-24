@@ -37,3 +37,10 @@ def test_gradescope_job_runs_every_few_hours():
     sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, gradescope=noop)
     jobs = {j.id: j for j in sched.get_jobs()}
     assert jobs["gradescope"].trigger.interval.total_seconds() == 3 * 3600
+
+
+def test_calendar_job_runs_hourly_by_default():
+    cfg = AppConfig()
+    sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, calendar=noop)
+    jobs = {j.id: j for j in sched.get_jobs()}
+    assert jobs["calendar"].trigger.interval.total_seconds() == 3600

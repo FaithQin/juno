@@ -18,6 +18,7 @@ from typing import Callable
 from zoneinfo import ZoneInfo
 
 from .brief import Event, short_location, _span
+from .gcal import event_body
 from .db import Store
 from .reminders import DueTask
 from .tasks import due_task_from, match_tasks, normalize_course
@@ -343,6 +344,33 @@ class ChatOps:
         elif a.kind == "snooze":
             self.store.clear_snooze(p["task_id"])
             msg = f"undone: snooze for {p['content']} cleared"
+        elif a.kind == "add_event":
+            self.calendar.delete_event(p["calendar_id"], p["event_id"])
+            msg = f"undone: deleted {p['title']}"
+        elif a.kind == "move_event":
+            old_start = datetime.fromisoformat(p["old_start"])
+            old_end = datetime.fromisoformat(p["old_end"]) if p.get("old_end") else old_start + timedelta(hours=1)
+            tzname = str(self.tz)
+            self.calendar.update_event(p["calendar_id"], p["event_id"], {
+                "start": {"dateTime": old_start.isoformat(timespec="seconds"), "timeZone": tzname},
+                "end": {"dateTime": old_end.isoformat(timespec="seconds"), "timeZone": tzname},
+            })
+            msg = f"undone: {p['title']} back to {self._day_span(old_start, old_end)}"
+        elif a.kind == "delete_event":
+            self.calendar.create_event(p["calendar_id"], p["body"])
+            msg = f"undone: {p['title']} is back on {p['day']}"
+        elif a.kind == "delete_task":
+            snap = p["snapshot"]
+            due_at = due_date = None
+            if snap.get("due"):
+                if snap.get("due_kind") == "datetime":
+                    due_at = datetime.fromisoformat(snap["due"])
+                    due_at = due_at if due_at.tzinfo else due_at.replace(tzinfo=self.tz)
+                else:
+                    due_date = date.fromisoformat(snap["due"])
+            self.todoist.add_task(content=snap["content"], description=snap["description"], project_id=snap["project_id"],
+                                  section_id=snap["section_id"], due_at=due_at, due_date=due_date, priority=snap["priority"])
+            msg = f"undone: {snap['content']} is back"
         elif a.kind == "remember":
             self.store.forget(p["fact_id"])
             msg = f"undone: forgot '{p['text']}'"
@@ -355,6 +383,115 @@ class ChatOps:
         if self.web is None:
             return "i can't open links right now"
         return self.web.read(url)
+
+    # -- calendar writes and deletes (phase 6): act, echo, undo ------------------------
+
+    START_ERROR = "error: start must be an ISO datetime like 2026-09-24T09:00"
+
+    def _parse_dt(self, raw: str | None) -> datetime | None:
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(raw.strip())
+        except ValueError:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=self.tz)
+
+    def _day_span(self, start: datetime, end: datetime | None) -> str:
+        ev = Event("", start, end, None, False, "")
+        return f"{self._date_words(self._local(start).date())} {_span(ev, self.tz)}"
+
+    def _calendar_id(self, name: str | None) -> tuple[str, str] | str:
+        """(calendar id, label) for a display name; None means the personal calendar."""
+        if not name:
+            return "primary", "personal calendar"
+        ids = self.calendar.calendar_ids()
+        for known, cal_id in ids.items():
+            if known.lower() == name.strip().lower():
+                return cal_id, known
+        return f"no calendar called '{name}' (i know {', '.join(self.calendar_names)})"
+
+    def _pick_event(self, query: str) -> Event | str:
+        if self.calendar is None:
+            return "calendar isn't connected yet. run: uv run assistant gcal-auth"
+        now = self.now()
+        try:
+            events = self.calendar.events_in_window(self.calendar_names, now - timedelta(days=1), now + timedelta(days=14), self.tz)
+        except Exception as e:
+            return f"couldn't read the calendar ({type(e).__name__}). try again in a bit"
+        words = [w for w in query.lower().split() if w]
+        matches = []
+        for e in events:
+            hay = e.title.lower()
+            tokens = set(re.findall(r"[a-z0-9]+", hay))
+            squashed = re.sub(r"[^a-z0-9]", "", hay)
+            if words and all(w in tokens or (len(w) >= 3 and (w in hay or re.sub(r"[^a-z0-9]", "", w) in squashed)) for w in words):
+                matches.append(e)
+        if not matches:
+            return f"no event matches '{query}' in the next two weeks"
+        if len(matches) > 1:
+            return "which one?\n" + "\n".join(f"- {e.title} ({self._day_span(e.start, e.end)})" for e in matches[:6])
+        return matches[0]
+
+    def add_event(self, title: str, start: str, end: str | None = None, location: str | None = None,
+                  calendar: str | None = None, notes: str | None = None) -> str:
+        if self.calendar is None:
+            return "calendar isn't connected yet. run: uv run assistant gcal-auth"
+        target = self._calendar_id(calendar)
+        if isinstance(target, str):
+            return target
+        cal_id, label = target
+        start_dt = self._parse_dt(start)
+        if start_dt is None:
+            return self.START_ERROR
+        end_dt = self._parse_dt(end) if end else None
+        body = event_body(title=title.strip(), start=start_dt, end=end_dt, location=location, description=notes)
+        created = self.calendar.create_event(cal_id, body)
+        self.store.log_action("add_event", {"calendar_id": cal_id, "event_id": created["id"], "title": title.strip()}, at=self.now())
+        where = f" at {location}" if location else ""
+        return f"added: {title.strip()}, {self._day_span(start_dt, end_dt or start_dt + timedelta(hours=1))}{where} ({label})"
+
+    def move_event(self, query: str, start: str, end: str | None = None) -> str:
+        e = self._pick_event(query)
+        if isinstance(e, str):
+            return e
+        new_start = self._parse_dt(start)
+        if new_start is None:
+            return self.START_ERROR
+        duration = (e.end - e.start) if e.end else timedelta(hours=1)
+        new_end = self._parse_dt(end) if end else new_start + duration
+        tzname = str(self.tz)
+        self.calendar.update_event(e.calendar_id, e.id, {
+            "start": {"dateTime": new_start.isoformat(timespec="seconds"), "timeZone": tzname},
+            "end": {"dateTime": new_end.isoformat(timespec="seconds"), "timeZone": tzname},
+        })
+        self.store.log_action("move_event", {"calendar_id": e.calendar_id, "event_id": e.id, "title": e.title,
+                                             "old_start": e.start.isoformat(), "old_end": e.end.isoformat() if e.end else None}, at=self.now())
+        return f"moved: {e.title} → {self._day_span(new_start, new_end)}"
+
+    def delete_event(self, query: str) -> str:
+        e = self._pick_event(query)
+        if isinstance(e, str):
+            return e
+        body = event_body(title=e.title, start=e.start, end=e.end, location=e.location, description=e.description, canvas_id=e.canvas_id)
+        self.calendar.delete_event(e.calendar_id, e.id)
+        self.store.log_action("delete_event", {"calendar_id": e.calendar_id, "body": body, "title": e.title,
+                                               "day": self._date_words(self._local(e.start).date())}, at=self.now())
+        return f"deleted: {e.title} ({self._day_span(e.start, e.end)})"
+
+    def delete_task(self, query: str) -> str:
+        t = self._pick(query)
+        if isinstance(t, str):
+            return t
+        due = getattr(getattr(t, "due", None), "date", None)
+        snapshot = {
+            "content": t.content, "description": getattr(t, "description", "") or "", "project_id": getattr(t, "project_id", self.classes_project_id),
+            "section_id": getattr(t, "section_id", None), "priority": getattr(t, "priority", 1) or 1,
+            "due": due.isoformat() if due is not None else None, "due_kind": "datetime" if isinstance(due, datetime) else "date" if due else None,
+        }
+        self.todoist.delete_task(t.id)
+        self.store.log_action("delete_task", {"task_id": t.id, "content": t.content, "snapshot": snapshot}, at=self.now())
+        return f"deleted: {t.content}"
 
     def ed_announcements(self, course: str, limit: int = 5) -> str:
         from .ed import format_announcements, match_course

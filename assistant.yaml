@@ -23,3 +23,7 @@ sync:
 
 gradescope:
   every_hours: 3                         # Gradescope → Todoist through the saved browser login
+
+calendar:
+  target: Stanford                       # Google calendar that receives Canvas events
+  every_minutes: 60

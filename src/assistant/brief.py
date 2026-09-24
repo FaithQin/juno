@@ -20,7 +20,11 @@ class Event:
     end: datetime | None
     location: str | None
     all_day: bool
-    calendar: str
+    calendar: str               # display name
+    id: str | None = None       # Google event id (when it came from the API)
+    calendar_id: str | None = None
+    description: str | None = None
+    canvas_id: int | None = None   # set when juno created it from a Canvas event
 
 
 def short_location(location: str | None) -> str | None:

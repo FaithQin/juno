@@ -96,8 +96,53 @@ class FakeTodoist:
 
 
 class FakeCalendar:
-    def __init__(self, events_by_day: dict[date, list[Event]] | None = None):
-        self.events_by_day = events_by_day or {}
+    """In-memory Google Calendar: events keyed by id, with the same surface GoogleCalendar exposes."""
+
+    def __init__(self, events_by_day: dict[date, list[Event]] | None = None, names: dict[str, str] | None = None):
+        self.names = names or {"Stanford": "cal-stanford", "TA": "cal-ta", "faithclairvoyant333@gmail.com": "primary"}
+        self.events: dict[str, Event] = {}
+        self.deleted: list[str] = []
+        self._n = 0
+        for day, evs in (events_by_day or {}).items():
+            for e in evs:
+                self._add(e)
+
+    def _add(self, e: Event) -> Event:
+        self._n += 1
+        e = Event(e.title, e.start, e.end, e.location, e.all_day, e.calendar, id=e.id or f"ev{self._n}",
+                  calendar_id=e.calendar_id or self.names.get(e.calendar, "primary"), description=e.description)
+        self.events[e.id] = e
+        return e
+
+    def calendar_ids(self):
+        return dict(self.names)
 
     def events_for_day(self, calendar_names, day, tz):
-        return self.events_by_day.get(day, [])
+        return [e for e in self.events.values() if e.start.astimezone(tz).date() == day]
+
+    def events_in_window(self, calendar_names, start, end, tz):
+        ids = {self.names.get(n) for n in calendar_names}
+        return sorted((e for e in self.events.values() if start <= e.start < end and e.calendar_id in ids), key=lambda e: e.start)
+
+    def get_event(self, calendar_id, event_id):
+        return self.events[event_id]
+
+    def create_event(self, calendar_id, body):
+        name = next((n for n, i in self.names.items() if i == calendar_id), calendar_id)
+        start = datetime.fromisoformat(body["start"]["dateTime"]) if "dateTime" in body["start"] else None
+        end = datetime.fromisoformat(body["end"]["dateTime"]) if "dateTime" in body["end"] else None
+        e = self._add(Event(body["summary"], start, end, body.get("location"), False, name, calendar_id=calendar_id,
+                            description=body.get("description")))
+        return {"id": e.id, "summary": e.title, "extendedProperties": body.get("extendedProperties", {})}
+
+    def update_event(self, calendar_id, event_id, patch):
+        e = self.events[event_id]
+        start = datetime.fromisoformat(patch["start"]["dateTime"]) if "start" in patch else e.start
+        end = datetime.fromisoformat(patch["end"]["dateTime"]) if "end" in patch else e.end
+        self.events[event_id] = Event(patch.get("summary", e.title), start, end, patch.get("location", e.location), e.all_day,
+                                      e.calendar, id=e.id, calendar_id=e.calendar_id, description=patch.get("description", e.description))
+        return {"id": event_id}
+
+    def delete_event(self, calendar_id, event_id):
+        self.deleted.append(event_id)
+        self.events.pop(event_id, None)

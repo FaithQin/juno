@@ -134,3 +134,13 @@ Secrets in `.env` with 600 permissions, never committed. Daily token budget once
 | Ed | **official-ish API with a personal token** (`ED_API_TOKEN`); `ed_announcements` tool; browsing Ed stays available |
 | "Too many steps" | fixed by trimming old tool output from history before each model request (keep the last 3 in full); per-turn ceiling raised to 24 requests / 250k tokens as a backstop |
 | Editing tasks | new `edit_task` tool: title, notes, priority; undoable |
+
+## Phase 5 decisions (2026-09-24): calendar
+
+| Decision | Choice |
+|---|---|
+| Deletes | **act, then echo, undoable**; only on her explicit ask; syncs never delete |
+| Canvas events target | the **Stanford** calendar |
+| First calendar run | **propose over Telegram, wait for yes** (matches by same day + within an hour + course code or shared title word) |
+| Chat calendar tools | add / move / delete events with undo; new events go to Stanford (classes, exams), TA (office hours), or personal, per the persona |
+| Cadence | hourly, via the Canvas API (no browser) |
