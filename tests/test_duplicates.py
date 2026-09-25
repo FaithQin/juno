@@ -49,6 +49,17 @@ def link_all(store):
     store.link("assignment", 901, 232193, "C2", adopted=False, name="Post-lab 1", due_at=None, submitted=False)
 
 
+def test_only_words_she_wrote_count_as_notes():
+    from assistant.duplicates import hand_written
+
+    assert hand_written("For Lab 1 (Tue Sep 29). No late pre-labs.")
+    assert not hand_written("External tool on [Canvas](https://canvas.stanford.edu/courses/232193/assignments/828789)")
+    assert not hand_written("https://www.gradescope.com/courses/1/assignments/11")
+    assert not hand_written("[Handout](https://canvas.stanford.edu/courses/1/files/2)")
+    assert not hand_written("Canvas quizzes due Fri 11:59pm:\n- [2 SI Prefixes](https://x/1)\n- [3. KCL](https://x/2)")
+    assert not hand_written("")
+
+
 def test_normalize_title_ignores_course_prefix_source_suffix_case_and_punctuation():
     assert normalize_title("MATSCI 88Q: Pre-lab 1 (Gradescope)", courses=COURSES) == "prelab1"
     assert normalize_title("MATSCI 88Q: Pre-lab 1", courses=COURSES) == "prelab1"
@@ -141,3 +152,61 @@ async def test_quiet_run_answers_chat_and_waits_behind_another_proposal(tmp_path
     text = await check2.run(quiet=True)
     assert text.startswith("todoist: 1 pair looks like duplicates.") and out2.sent == []
     assert store2.pending_job()["kind"] == "duplicates"
+
+
+# --- the MATSCI 88Q triples: hand-made, Gradescope-made, Canvas-made (2026-09-24 audit) --------
+
+HAND_NOTES = "For Lab 1 (Tue Sep 29, EVGR C kitchen). No late pre-labs."
+GS_DESC = "Gradescope assignment on [Gradescope](https://www.gradescope.com/courses/1399426/assignments/8676496)"
+
+
+def triple():
+    """Fresh each time: FakeTodoist edits the very objects it is given."""
+    hand = FakeTask("H", "MATSCI 88Q: Pre-lab 1 (Gradescope)", FakeDue(datetime(2026, 9, 28, 12, 0)), 1, None,
+                    project_id="P-MATSCI", created_at=made(23), description=HAND_NOTES)
+    gs = FakeTask("G", "MATSCI 88Q: Lab 1: Pre Lab (Gradescope)", FakeDue(utc(2026, 9, 28, 19, 0)), 1, None,
+                  project_id="P-MATSCI", created_at=made(24), description=GS_DESC)
+    cv = FakeTask("C", "MATSCI 88Q: Pre-lab 1", FakeDue(utc(2026, 9, 28, 19, 0)), 1, None, project_id="P-MATSCI",
+                  created_at=made(24), description="External tool on [Canvas](https://canvas.stanford.edu/courses/232193/assignments/828789)")
+    return [hand, gs, cv]
+
+
+TWINS = {8676496: 828789}
+
+
+def link_triple(store):
+    store.link("gradescope", 8676496, 1399426, "G", adopted=False, name="Lab 1: Pre Lab", due_at=None, submitted=False)
+    store.link("assignment", 828789, 232193, "C", adopted=False, name="Pre-lab 1", due_at=None, submitted=False)
+
+
+def test_a_canvas_twin_of_a_gradescope_assignment_is_the_same_task_and_gradescope_is_kept(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    link_triple(store)
+    groups = find_duplicates(triple(), links=store.links(), courses=COURSES, twins=TWINS)
+    assert [(g.keep.id, [t.id for t in g.extras]) for g in groups] == [("G", ["C", "H"])]
+    assert [(g.keep.id, [t.id for t in g.extras]) for g in find_duplicates(triple(), links=store.links(), courses=COURSES)] == [
+        ("C", ["H"])]                                                           # without the twin map: the old pair only
+
+
+async def test_yes_keeps_the_gradescope_task_moves_her_notes_onto_it_and_repoints_canvas(tmp_path):
+    check, store, todoist, out = make_check(tmp_path, triple())
+    link_triple(store)
+    store.kv_set("gradescope_twins", '{"8676496": 828789}')
+    await check.run()
+    text = out.sent[0]
+    assert text.splitlines()[0] == "todoist: 1 pair looks like duplicates."
+    assert "- MATSCI 88Q: Pre-lab 1 looks like a copy of MATSCI 88Q: Lab 1: Pre Lab (Gradescope) (both due mon sep 28 12:00pm)" in text
+    assert ("- MATSCI 88Q: Pre-lab 1 (Gradescope) looks like a copy of MATSCI 88Q: Lab 1: Pre Lab (Gradescope) "
+            "(both due mon sep 28 12:00pm; your notes move over)") in text
+    reply = await check.approve(store.pending_job()["payload"], True)
+    assert reply == ("deleted 2 copies: MATSCI 88Q: Pre-lab 1, MATSCI 88Q: Pre-lab 1 (Gradescope). "
+                     "your notes are on MATSCI 88Q: Lab 1: Pre Lab (Gradescope) now. undo brings the last one back")
+    assert sorted(todoist.deleted) == ["C", "H"]
+    kept = todoist.get_task("G")
+    assert kept.description == GS_DESC + "\n\n" + HAND_NOTES
+    assert store.links()[("assignment", 828789)].task_id == "G"
+    kinds = []
+    while (a := store.last_undoable()) is not None:
+        kinds.append(a.kind)
+        store.mark_undone(a.id)
+    assert kinds == ["delete_task", "delete_task", "edit_task"]                 # undo: copies back first, then the notes edit

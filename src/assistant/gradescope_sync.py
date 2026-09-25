@@ -4,13 +4,21 @@ Same engine as the Canvas sync (`plan_sync` / `apply_plan`), same rules: identit
 Gradescope assignment id, update never recreate, tick when submitted. One addition,
 from Faith's answer: the *first* run doesn't write anything. Hand-made Gradescope
 tasks have no link to match on, so the job proposes title matches plus the new items
-over Telegram and waits for a yes. After that, new assignments are created then texted.
+over Telegram and waits for a yes. After that, new assignments are created then texted, with
+two exceptions:
+  * an assignment Canvas also posts (an external tool that names this Gradescope id) joins the
+    task the Canvas side already has, by id (twins.py);
+  * an assignment that plausibly is a task Faith wrote down herself ("ENGR 40M: PSET 1
+    (Gradescope)" from the syllabus) is asked about first, one question at a time, and linked
+    only on a yes (matching.py). No makes it its own task, as before.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -19,11 +27,16 @@ from .canvas_client import CanvasItem
 from .config import CoursesConfig
 from .db import Store
 from .gradescope import BASE, match_courses, parse_course, parse_dashboard
-from .sync import adopt_by_title, adopt_links, adopt_same_title, apply_plan, format_report, iso, plan_sync
+from .matching import due_gap, plausible_matches
+from .sync import (_task_due_iso, adopt_by_title, adopt_links, adopt_same_title, apply_plan, format_report, iso,
+                   plan_sync, task_title)
 from .tasks import course_of
+from .twins import link_twins, load_twins
 
 Send = Callable[[str], Awaitable[None]]
 JOB_KIND = "gradescope_first_run"
+MATCH_KIND = "gradescope_match"                   # "is this new assignment the task you already have?"
+MATCH_DECLINED = "gradescope_match_declined"      # ["<gradescope id>:<task id>", ...] she said no to
 LOGIN_NAG = "gradescope logged me out. on your mac: uv run assistant browser-login gradescope, then scripts/deploy.sh"
 
 
@@ -140,25 +153,159 @@ class GradescopeSync:
                             f"once you've answered the {slot} proposal") if quiet else None
                 return question
 
-        # after the first run: an assignment the Canvas sync already made a task for is shared, not twinned
+        # after the first run. Identity first: the Canvas half of this assignment already has a task
         task_course = {t.id: self._course_of(t) for t in active}
-        same_title = adopt_same_title(items, active, links, course_for=course_for, task_course=task_course)
         by_task = {t.id: t for t in active}
-        for link in same_title:
+        by_twin = link_twins(items, links, load_twins(self.store))
+        self._keep(by_twin, links)
+        # an exact title of a task a sync already follows (the other sync's twin) is shared, not twinned
+        followed = {l.task_id for l in links.values()}
+        same_title = adopt_same_title(items, [t for t in active if t.id in followed], links,
+                                      course_for=course_for, task_course=task_course)
+        self._keep(same_title, links)
+        # a task she wrote down herself is only ever a guess: ask, and hold the item back meanwhile
+        held, notes, waiting = await self._ask_about_matches(items, active, links, course_for, task_course, now, quiet)
+
+        plan = plan_sync([it for it in items if it.key not in held], course_for, links, tasks, tz=self.tz,
+                         complete_when_submitted=self.complete_when_submitted)
+        report = apply_plan(plan, todoist=self.todoist, store=self.store, project_id=self.project_id,
+                            sections=self._sections, tz=self.tz, dry_run=False)
+        report.adopted += [f"{l.name} → {task_title(l.task_id, by_task, tasks)}" for l in by_twin + same_title]
+        report.notes += notes
+        text = None
+        if report.changed or report.errors or notes:
+            text = "gradescope " + format_report(report)
+            if not quiet:
+                await self.send(text)
+        if quiet and waiting:
+            return "\n\n".join(x for x in (text, waiting) if x)
+        return text
+
+    def _keep(self, new_links, links) -> None:
+        for link in new_links:
             links[link.key] = link
             self.store.link(link.kind, link.canvas_id, link.course_id, link.task_id, adopted=True,
                             name=link.name, due_at=link.due_at, submitted=link.submitted)
 
-        plan = plan_sync(items, course_for, links, tasks, tz=self.tz, complete_when_submitted=self.complete_when_submitted)
+    # -- a new assignment that may be a task she already has ------------------------
+
+    def _task_when(self, task) -> str:
+        raw = getattr(getattr(task, "due", None), "date", None)
+        if isinstance(raw, datetime):
+            return _fmt_due(raw if raw.tzinfo else raw.replace(tzinfo=self.tz), self.tz)
+        return raw.strftime("%a %b %-d").lower() if raw else "no date"
+
+    def _same_instant(self, due_at: datetime, task) -> bool:
+        raw = getattr(getattr(task, "due", None), "date", None)
+        return isinstance(raw, datetime) and due_gap(due_at, task, self.tz) == timedelta(0)
+
+    async def _ask_about_matches(self, items, active, links, course_for, task_course, now, quiet):
+        """Returns (item keys to hold back from the plan, report notes, text for a quiet run)."""
+        followed = {l.task_id for l in links.values()}
+        hand_made = [t for t in active if t.id not in followed]
+        fresh = [it for it in items if it.key not in links and it.due_at is not None and not it.submitted]
+        declined = set(json.loads(self.store.kv_get(MATCH_DECLINED) or "[]"))
+        pairs = [(it, t) for it, t in plausible_matches(fresh, hand_made, course_for=course_for,
+                                                         task_course=task_course, tz=self.tz)
+                 if f"{it.canvas_id}:{t.id}" not in declined]
+        job = self.store.pending_job()
+        if not pairs:
+            if job and job["kind"] == MATCH_KIND:        # answered some other way (e.g. Canvas linked it by id)
+                self.store.kv_delete("pending_job")
+                names = ", ".join(p["name"] for p in job["payload"].get("pairs", []))
+                return set(), [f"no need to answer my question about {names}, that's sorted"], None
+            return set(), [], None
+
+        held = {it.key for it, _ in pairs}
+        n = len(pairs)
+        digest = hashlib.sha1(";".join(sorted(f"{it.canvas_id}:{t.id}" for it, t in pairs)).encode()).hexdigest()
+        slot = self.store.proposal_slot(MATCH_KIND, digest)
+        if slot not in ("free", "asked"):
+            return held, [], (f"gradescope: {n} new assignment{'s look' if n != 1 else ' looks'} like "
+                              f"{'tasks' if n != 1 else 'a task'} you already have; i'll ask once you've answered the {slot} proposal")
+        question = self._match_question(pairs)
+        if slot == "free":
+            payload = {
+                "digest": digest,
+                "pairs": [{"id": it.canvas_id, "course_id": it.course_id, "name": it.name, "due_at": iso(it.due_at),
+                           "url": it.html_url, "submitted": it.submitted, "task_id": t.id, "content": t.content}
+                          for it, t in pairs],
+                "course_for": {str(gid): c.code for gid, c in course_for.items()},
+            }
+            self.store.propose_job(MATCH_KIND, payload, question, at=now)   # asked once; later runs wait
+            if not quiet:
+                await self.send(question)
+        return held, [], question
+
+    def _match_question(self, pairs) -> str:
+        one = len(pairs) == 1
+        lines = ["gradescope: a new assignment looks like a task you already have:" if one else
+                 f"gradescope: {len(pairs)} new assignments look like tasks you already have:"]
+        for it, t in pairs:
+            theirs = _fmt_due(it.due_at, self.tz)
+            when = f"both due {theirs}" if self._same_instant(it.due_at, t) else f"gradescope: {theirs}, yours: {self._task_when(t)}"
+            lines.append(f"- {it.name} → {t.content} ({when})")
+        lines.append("reply yes to link them (i'll tick it when you submit and follow gradescope's date changes), "
+                     "or no to add it as a new task" if one else
+                     "reply yes to link them (i'll tick them when you submit and follow gradescope's date changes), "
+                     "or no to add them as new tasks")
+        return "\n".join(lines)
+
+    async def approve_match(self, payload: dict, approved: bool) -> str:
+        """Yes: record each link (adopted), leaving her title, notes and date alone; Gradescope's later
+        date changes and a submission reach the task from now on. No: make the Gradescope task, as
+        without this question, and never pair those two again."""
+        links = self.store.links()
+        pairs = [p for p in payload.get("pairs", []) if ("gradescope", p["id"]) not in links]  # linked meanwhile: done
+        if not approved:
+            declined = set(json.loads(self.store.kv_get(MATCH_DECLINED) or "[]"))
+            declined |= {f"{p['id']}:{p['task_id']}" for p in payload.get("pairs", [])}
+            self.store.kv_set(MATCH_DECLINED, json.dumps(sorted(declined)))
+            made = self._create(pairs, payload)
+            if not made:
+                return "ok, i'll keep them apart"
+            return f"ok, added {'it as a new task' if len(made) == 1 else 'them as new tasks'}: {', '.join(made)}"
+
+        linked, notes, gone = [], [], []
+        for p in pairs:
+            try:
+                task = await asyncio.to_thread(self.todoist.get_task, p["task_id"])
+            except Exception:
+                gone.append(p)                             # she deleted it meanwhile: make the Gradescope task instead
+                continue
+            self.store.link("gradescope", p["id"], p["course_id"], p["task_id"], adopted=True,
+                            name=p["name"], due_at=p["due_at"], submitted=p["submitted"])
+            self.store.upsert_task(p["task_id"], batch_key=None, managed=False, content=task.content,
+                                   description=getattr(task, "description", None), due_at=_task_due_iso(task),
+                                   completed=bool(getattr(task, "is_completed", False)))
+            linked.append(f"{p['name']} → {task.content}")
+            due = datetime.fromisoformat(p["due_at"]) if p.get("due_at") else None
+            if due is not None and not self._same_instant(due, task):
+                yours = self._task_when(task)
+                if yours != due.astimezone(self.tz).strftime("%a %b %-d").lower():   # a date-only task on the same day is fine
+                    notes.append(f"heads up: gradescope has {task.content} due {_fmt_due(due, self.tz)}, "
+                                 f"yours says {yours}. i left yours")
+        lines = [f"linked {len(linked)}: {', '.join(linked)}"] if linked else []
+        lines += notes
+        made = self._create(gone, payload)
+        if made:
+            lines.append(f"couldn't find {'that task' if len(gone) == 1 else 'those tasks'} anymore, so i added: {', '.join(made)}")
+        return "\n".join(lines) if lines else "nothing to link anymore; it's sorted"
+
+    def _create(self, pairs: list[dict], payload: dict) -> list[str]:
+        if not pairs:
+            return []
+        by_code = {c.code: c for c in self.courses_cfg.courses}
+        course_for = {int(gid): by_code[code] for gid, code in payload.get("course_for", {}).items() if code in by_code}
+        items = [CanvasItem(kind="gradescope", canvas_id=p["id"], course_id=p["course_id"], name=p["name"],
+                            due_at=datetime.fromisoformat(p["due_at"]) if p["due_at"] else None, html_url=p["url"],
+                            submission_types=("gradescope",), external_url=None, group_id=None, group_name=None,
+                            submitted=p["submitted"], published=True)
+                 for p in pairs]
+        plan = plan_sync(items, course_for, self.store.links(), self.store.tasks(), tz=self.tz)
         report = apply_plan(plan, todoist=self.todoist, store=self.store, project_id=self.project_id,
                             sections=self._sections, tz=self.tz, dry_run=False)
-        report.adopted += [f"{l.name} → {by_task[l.task_id].content}" for l in same_title]
-        if report.changed or report.errors:
-            text = "gradescope " + format_report(report)
-            if not quiet:
-                await self.send(text)
-            return text
-        return None
+        return [c.content for c in plan.creates][: len(report.created)]
 
     def _question(self, pairs, new, course_for) -> str:
         n = len(pairs) + len(new)

@@ -24,7 +24,7 @@ from .config import AppConfig, CoursesConfig, Settings, load_app_config, load_co
 from .db import Store
 from .ed import EdClient, ed_token_from_session
 from .gcal import GoogleCalendar
-from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, GradescopeSync
+from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, MATCH_KIND as GRADESCOPE_MATCH_JOB, GradescopeSync
 from .calendar_sync import JOB_KIND as CALENDAR_JOB, CalendarSync, canvas_events_from_api
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
 from .duplicates import JOB_KIND as DUPLICATES_JOB, DuplicateCheck
@@ -211,6 +211,7 @@ async def serve(rt: Runtime) -> None:
         complete_when_submitted=rt.settings.complete_when_submitted,
     )
     rt.session.job_handlers[GRADESCOPE_JOB] = gradescope.approve   # a yes/no in chat answers its proposal
+    rt.session.job_handlers[GRADESCOPE_MATCH_JOB] = gradescope.approve_match   # "is this new assignment your task?"
 
     async def gradescope_job():
         try:

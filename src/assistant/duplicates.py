@@ -9,9 +9,12 @@ Canvas sync and on demand from chat ("check for duplicates").
 and either their titles are the same once the course code, a source suffix like "(Gradescope)",
 case and punctuation are ignored, with due dates no more than a day apart (a weekly "reading"
 task a week apart is a series, not a copy), or their descriptions point at the same Canvas or
-Gradescope assignment. The kept task is the one a sync tracks (Canvas over Gradescope), else the
-older one. The copies are deleted only after Faith says yes, each with an undo snapshot, and any
-sync link on a copy moves to the kept task so a submission still ticks it.
+Gradescope assignment, or they are linked to the two halves of one assignment (a Canvas external
+tool that opens a Gradescope assignment, by id; see twins.py). The kept task is the one a sync
+tracks (a Canvas link, then a Gradescope link, then the Canvas half of a Gradescope assignment,
+which only ticks once grades flow back), else the older one. The copies are deleted only after
+Faith says yes, each with an undo snapshot; notes she wrote on a copy are added to the kept task
+first, and any sync link on a copy moves to the kept task so a submission still ticks it.
 """
 
 from __future__ import annotations
@@ -28,12 +31,16 @@ from zoneinfo import ZoneInfo
 
 from .db import ItemLink, Store
 from .sync import links_in
+from .twins import load_twins
 
 Send = Callable[[str], Awaitable[None]]
 JOB_KIND = "duplicates"
 DECLINED_KEY = "duplicates_declined"
 SUFFIX_RE = re.compile(r"\((gradescope|paperless|canvas|ed)\)", re.IGNORECASE)
 LINK_SCORE = {"assignment": 3, "quiz": 3, "gradescope": 2}
+TWIN_SCORE = 1                     # the Canvas half of a Gradescope assignment: Canvas sees no submission, only grades
+LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)|https?://\S+")
+GENERATED_RE = re.compile(r"^[A-Z][\w ]* on \[(?:Canvas|Gradescope)\]\(\S+\)$")
 log = logging.getLogger(__name__)
 
 
@@ -66,6 +73,18 @@ def _close_enough(a, b, tz: ZoneInfo) -> bool:
     return da is None or db is None or abs(da - db) <= timedelta(days=1)
 
 
+def hand_written(description: str | None) -> bool:
+    """Notes Faith wrote, as opposed to the one-line link a sync puts on the tasks it makes."""
+    text = (description or "").strip()
+    if not text or GENERATED_RE.match(text):
+        return False
+    lines = text.splitlines()
+    if lines[0].startswith("Canvas ") and all(l.lstrip().startswith("-") for l in lines[1:] if l.strip()):
+        return False                                   # a sync's batch checklist
+    words = LINK_RE.sub(" ", text)                      # links alone are not notes
+    return bool(re.search(r"[A-Za-z]{2}", words))
+
+
 def _created(task) -> str:
     c = getattr(task, "created_at", None)
     return c.isoformat() if isinstance(c, datetime) else str(c or "")
@@ -82,8 +101,11 @@ class DupGroup:
 
 
 def find_duplicates(tasks, *, links: dict[tuple[str, int], ItemLink], courses: list[str],
-                    tz: ZoneInfo = ZoneInfo("America/Los_Angeles")) -> list[DupGroup]:
+                    tz: ZoneInfo = ZoneInfo("America/Los_Angeles"), twins: dict[int, int] | None = None) -> list[DupGroup]:
+    """`twins` is {gradescope id: canvas assignment id} (twins.load_twins): tasks linked to the two
+    halves of one assignment are copies whatever their titles."""
     tasks = list(tasks)
+    twins = twins or {}
     parent = {t.id: t.id for t in tasks}
 
     def find(x):
@@ -111,10 +133,16 @@ def find_duplicates(tasks, *, links: dict[tuple[str, int], ItemLink], courses: l
             for b in group[i + 1:]:
                 if _close_enough(a, b, tz):
                     union(a.id, b.id)
+    for gs_id, canvas_id in twins.items():            # one assignment's two halves: copies, by id
+        a, b = links.get(("gradescope", gs_id)), links.get(("assignment", canvas_id))
+        if a is not None and b is not None and a.task_id in parent and b.task_id in parent:
+            union(a.task_id, b.task_id)
 
+    canvas_halves = set(twins.values())
     score: dict[str, int] = {}
     for link in links.values():
-        score[link.task_id] = max(score.get(link.task_id, 0), LINK_SCORE.get(link.kind, 1))
+        points = TWIN_SCORE if link.kind == "assignment" and link.canvas_id in canvas_halves else LINK_SCORE.get(link.kind, 1)
+        score[link.task_id] = max(score.get(link.task_id, 0), points)
     clusters: dict[str, list] = {}
     for t in tasks:
         clusters.setdefault(find(t.id), []).append(t)
@@ -159,6 +187,11 @@ class DuplicateCheck:
             "due_kind": "datetime" if isinstance(raw, datetime) else "date" if raw else None,
         }
 
+    @staticmethod
+    def _carries(extra, keep) -> bool:
+        notes = (getattr(extra, "description", "") or "").strip()
+        return hand_written(notes) and notes not in (getattr(keep, "description", "") or "")
+
     def _declined(self) -> set[str]:
         return set(json.loads(self.store.kv_get(DECLINED_KEY) or "[]"))
 
@@ -172,12 +205,14 @@ class DuplicateCheck:
             keep_when = self._when(g.keep)
             for extra in g.extras:
                 when = self._when(extra)
+                bits = []
                 if when and keep_when and when == keep_when:
-                    note = f" (both due {when})"
+                    bits.append(f"both due {when}")
                 elif when and keep_when:
-                    note = f" (due {when} vs {keep_when})"
-                else:
-                    note = ""
+                    bits.append(f"due {when} vs {keep_when}")
+                if self._carries(extra, g.keep):
+                    bits.append("your notes move over")
+                note = f" ({'; '.join(bits)})" if bits else ""
                 lines.append(f"- {extra.content} looks like a copy of {g.keep.content}{note}")
         lines.append("reply yes to delete the copies (undoable), or no to keep them all")
         return "\n".join(lines)
@@ -193,7 +228,8 @@ class DuplicateCheck:
             log.warning("duplicates: couldn't read todoist (%s)", type(e).__name__)
             return f"todoist: couldn't read your tasks ({type(e).__name__})" if quiet else None
         declined = self._declined()
-        groups = [g for g in find_duplicates(tasks, links=self.store.links(), courses=self.courses, tz=self.tz)
+        groups = [g for g in find_duplicates(tasks, links=self.store.links(), courses=self.courses, tz=self.tz,
+                                             twins=load_twins(self.store))
                   if g.fingerprint not in declined]
         if not groups:
             return "todoist: no duplicate tasks" if quiet else None
@@ -220,8 +256,11 @@ class DuplicateCheck:
             return "ok, keeping them. i won't ask about those again"
         links = self.store.links()
         deleted: list[str] = []
+        noted: list[str] = []
         for g in groups:
             keep_id = g["keep"]["id"]
+            if await self._carry_notes(g):
+                noted.append(g["keep"]["content"])
             for extra in g["extras"]:
                 try:
                     await asyncio.to_thread(self.todoist.delete_task, extra["id"])
@@ -237,5 +276,35 @@ class DuplicateCheck:
                                         name=link.name, due_at=link.due_at, submitted=link.submitted)
                 deleted.append(extra["content"])
         if not deleted:
-            return "couldn't delete any of them (todoist said no); nothing changed"
-        return f"deleted {len(deleted)} cop{'ies' if len(deleted) != 1 else 'y'}: {', '.join(deleted)}. undo brings the last one back"
+            return "couldn't delete any of them (todoist said no); nothing changed" + (
+                f" except your notes, now also on {', '.join(noted)}" if noted else "")
+        notes = f" your notes are on {', '.join(noted)} now." if noted else ""
+        return (f"deleted {len(deleted)} cop{'ies' if len(deleted) != 1 else 'y'}: {', '.join(deleted)}.{notes} "
+                f"undo brings the last one back")
+
+    async def _carry_notes(self, group: dict) -> bool:
+        """Before a copy goes, what she wrote on it is appended to the kept task (logged, so undo
+        can take it back once the copies are restored)."""
+        keep = group["keep"]
+        try:
+            current = await asyncio.to_thread(self.todoist.get_task, keep["id"])
+            base = getattr(current, "description", "") or ""
+        except Exception:
+            base = keep.get("description") or ""
+        carry = []
+        for extra in group["extras"]:
+            notes = (extra.get("description") or "").strip()
+            if hand_written(notes) and notes not in base and notes not in carry:
+                carry.append(notes)
+        if not carry:
+            return False
+        merged = "\n\n".join([base.rstrip(), *carry]) if base.strip() else "\n\n".join(carry)
+        try:
+            await asyncio.to_thread(self.todoist.update_task, keep["id"], description=merged)
+        except Exception as e:
+            log.warning("duplicates: couldn't copy notes onto %r (%s)", keep["content"], type(e).__name__)
+            return False
+        self.store.log_action("edit_task", {"task_id": keep["id"], "content": keep["content"],
+                                            "old": {"content": keep["content"], "description": base,
+                                                    "priority": keep.get("priority", 1)}}, at=self.now())
+        return True

@@ -248,3 +248,72 @@ def test_a_gradescope_made_twin_is_adopted_by_the_canvas_sync_instead_of_a_secon
     assert [t.content for t in todoist.all_tasks()] == ["EE 100: Lab 1 (Gradescope)"]
     report, _ = sync(tmp_path, PROJECT_CFG, todoist, [item(1, "Lab 1")])
     assert report.adopted == [] and not report.changed                                # linked now: quiet
+
+
+# --- a Canvas external tool that *is* a Gradescope assignment (by id, 2026-09-24 audit) -------
+
+import json  # noqa: E402
+
+MAT_CFG = CoursesConfig.model_validate({
+    "todoist": {"project_id": "CLASSES"},
+    "courses": [{"code": "MATSCI 88Q", "canvas_id": 232193, "project_id": "P-MAT"},
+                {"code": "CME 102", "canvas_id": 232579, "project_id": "P-CME"}],
+})
+
+
+def gs_tool(canvas_id, name, gradescope_id, *, course_id=232193, due=FRI, submitted=False):
+    return CanvasItem(
+        kind="assignment", canvas_id=canvas_id, course_id=course_id, name=name, due_at=due,
+        html_url=f"https://canvas.stanford.edu/courses/{course_id}/assignments/{canvas_id}",
+        submission_types=("external_tool",), external_url="https://lti.int.turnitin.com/launch/gs-proxy",
+        group_id=None, group_name=None, submitted=submitted, published=True, gradescope_id=gradescope_id,
+    )
+
+
+def gradescope_made(store, tid, content, gs_id, *, project="P-MAT", due=FRI):
+    remember(store, tid, content)
+    store.link("gradescope", gs_id, 1399426, tid, adopted=False, name=content, due_at=due.isoformat(timespec="seconds"),
+               submitted=False)
+    return FakeTask(tid, content, FakeDue(due), project_id=project,
+                    description=f"Gradescope assignment on [Gradescope](https://www.gradescope.com/courses/1399426/assignments/{gs_id})")
+
+
+def test_a_gradescope_external_tool_joins_the_task_gradescope_already_made(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    g = gradescope_made(store, "G1", "MATSCI 88Q: Lab 1: Pre Lab (Gradescope)", 8676496)
+    todoist = FakeTodoist([g])
+    report, store = sync(tmp_path, MAT_CFG, todoist, [gs_tool(828789, "Pre-lab 1", 8676496)])
+    assert report.created == [] and report.adopted == ["Pre-lab 1 → MATSCI 88Q: Lab 1: Pre Lab (Gradescope)"]
+    assert store.links()[("assignment", 828789)].task_id == "G1"
+    assert json.loads(store.kv_get("gradescope_twins")) == {"8676496": 828789}
+    report, _ = sync(tmp_path, MAT_CFG, todoist, [gs_tool(828789, "Pre-lab 1", 8676496)])
+    assert not report.changed and [t.id for t in todoist.all_tasks()] == ["G1"]
+
+
+def test_an_undated_gradescope_external_tool_is_linked_so_a_later_date_makes_no_twin(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    g = gradescope_made(store, "G1", "CME 102: Pset1 (Gradescope)", 8709892, project="P-CME")
+    todoist = FakeTodoist([g])
+    pset1 = gs_tool(833182, "Pset1", 8709892, course_id=232579, due=None)
+    report, store = sync(tmp_path, MAT_CFG, todoist, [pset1])
+    assert report.adopted == ["Pset1 → CME 102: Pset1 (Gradescope)"] and report.skipped["no due date"] == 1
+    report, store = sync(tmp_path, MAT_CFG, todoist, [gs_tool(833182, "Pset1", 8709892, course_id=232579)])
+    assert report.created == [] and not report.changed and [t.id for t in todoist.all_tasks()] == ["G1"]
+
+
+def test_the_twin_link_counts_even_when_the_gradescope_task_is_already_done(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    g = gradescope_made(store, "G1", "MATSCI 88Q: Lab 1: Pre Lab (Gradescope)", 8676496)
+    g.is_completed = True                                                          # submitted on gradescope, ticked
+    todoist = FakeTodoist([g])
+    report, store = sync(tmp_path, MAT_CFG, todoist, [gs_tool(828789, "Pre-lab 1", 8676496)])
+    assert report.created == [] and report.adopted == ["Pre-lab 1 → MATSCI 88Q: Lab 1: Pre Lab (Gradescope)"]
+
+
+def test_dry_run_reports_the_twin_link_but_writes_nothing(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    g = gradescope_made(store, "G1", "MATSCI 88Q: Lab 1: Pre Lab (Gradescope)", 8676496)
+    todoist = FakeTodoist([g])
+    report, store = sync(tmp_path, MAT_CFG, todoist, [gs_tool(828789, "Pre-lab 1", 8676496)], dry_run=True)
+    assert report.adopted == ["Pre-lab 1 → MATSCI 88Q: Lab 1: Pre Lab (Gradescope)"] and report.created == []
+    assert ("assignment", 828789) not in store.links() and store.kv_get("gradescope_twins") is None

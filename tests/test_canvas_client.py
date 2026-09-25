@@ -42,3 +42,33 @@ def test_course_with_quizzes_disabled_still_returns_its_assignments():
     client.api = FakeApi()
     items = client.items_for_course(231533)
     assert [(i.kind, i.canvas_id, i.group_name, i.submitted) for i in items] == [("assignment", 823749, "Online Quizzes", False)]
+
+
+class GradescopeTool(FakeAssignment):
+    id = 828789
+    name = "Pre-lab 1"
+    submission_types = ["external_tool"]
+    external_tool_tag_attributes = {"url": "https://lti.int.turnitin.com/launch/gs-proxy", "new_tab": True,
+                                    "custom_params": {"tii_app_key": "gs-proxy", "custom_gradescope_resource_id": "assignment-8676496"}}
+
+
+class HypothesisTool(FakeAssignment):
+    id = 826592
+    name = "Reading 1 - Viscosity (Chapter 5.1)"
+    submission_types = ["external_tool"]
+    external_tool_tag_attributes = {"url": "https://lms.hypothes.is/lti_launches", "custom_params": {}}
+
+
+def test_a_gradescope_external_tool_carries_its_gradescope_assignment_id():
+    class Course(FakeCourse):
+        def get_assignments(self, **kwargs):
+            return [GradescopeTool(), HypothesisTool(), FakeAssignment()]
+
+    class Api:
+        def get_course(self, course_id):
+            return Course()
+
+    client = CanvasClient("https://canvas.example.edu", "token")
+    client.api = Api()
+    got = {i.canvas_id: (i.gradescope_id, i.is_gradescope) for i in client.items_for_course(232193)}
+    assert got == {828789: (8676496, True), 826592: (None, False), 823749: (None, False)}

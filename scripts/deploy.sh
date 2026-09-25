@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 ssh "$HOST" "mkdir -p $DIR/data"
 rsync -az --delete \
-  --exclude .venv --exclude .git --exclude __pycache__ --exclude .pytest_cache --exclude .DS_Store --exclude data \
+  --exclude .venv --exclude .git --exclude .claude --exclude __pycache__ --exclude .pytest_cache --exclude .DS_Store --exclude data \
   ./ "$HOST:$DIR/"
 if ! ssh "$HOST" "[ -f $DIR/data/assistant.sqlite3 ]"; then
   echo "first deploy: copying data/ (database + google token)"

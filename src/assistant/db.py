@@ -330,7 +330,8 @@ class Store:
         raw = self.kv_get("pending_job")
         return json.loads(raw) if raw else None
 
-    JOB_LABELS = {"calendar_first_run": "canvas calendar", "gradescope_first_run": "gradescope", "outlook_new": "outlook"}
+    JOB_LABELS = {"calendar_first_run": "canvas calendar", "gradescope_first_run": "gradescope", "outlook_new": "outlook",
+                  "gradescope_match": "gradescope match"}
 
     def proposal_slot(self, kind: str, digest: str) -> str:
         """'free' (ask now), 'asked' (this very proposal is already out), or the label of another

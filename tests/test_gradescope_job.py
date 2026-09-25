@@ -231,3 +231,199 @@ async def test_an_assignment_the_canvas_sync_already_made_is_adopted_not_twinned
     assert out.sent[0].startswith("gradescope sync\nlinked 1 to tasks you already had:\n  - Pset1 → CME 102: Pset1")
     await job.run()
     assert len(out.sent) == 1
+
+
+# --- hand-made tasks vs new Gradescope items, and Canvas twins (2026-09-24 audit) -------------
+
+import json  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from assistant.canvas_client import CanvasItem  # noqa: E402
+from assistant.sync import run_sync  # noqa: E402
+from fakes import FakeCanvas, FakeDue  # noqa: E402
+
+MAT_GS, CME_GS = 1399426, 1359455
+
+
+def local(y, mo, d, h, mi=0):
+    return datetime(y, mo, d, h, mi, tzinfo=TZ)
+
+
+def row(course, aid, name, due, *, submitted=False):
+    if submitted:
+        head = f'<a href="/courses/{course}/assignments/{aid}/submissions/1">{name}</a>'
+        status = "Submitted"
+    else:
+        head = f'<button class="js-submitAssignment" data-assignment-id="{aid}">{name}</button>'
+        status = "No Submission"
+    return (f'<tr><th class="table--primaryLink">{head}</th><td class="submissionStatus">'
+            f'<div class="submissionStatus--text">{status}</div></td><td><time class="submissionTimeChart--dueDate" '
+            f'datetime="{due.strftime("%Y-%m-%d %H:%M:%S %z")}">x</time></td></tr>')
+
+
+class PagesBrowser(FakeBrowser):
+    """Gradescope with the course pages a test sets (and changes between runs)."""
+
+    def __init__(self, pages):
+        super().__init__()
+        self.pages = pages
+
+    async def html(self, url):
+        self.opened.append(url)
+        if url.endswith("gradescope.com/"):
+            return DASHBOARD, False
+        for course, rows in self.pages.items():
+            if url.endswith(f"/courses/{course}"):
+                return f"<table id='assignments-student-table'><tbody>{''.join(rows)}</tbody></table>", False
+        return "<table id='assignments-student-table'><tbody></tbody></table>", False
+
+
+PRE_LAB_2 = lambda **kw: row(MAT_GS, 8676500, "Lab 2: Pre Lab", local(2026, 10, 5, 12), **kw)  # noqa: E731
+
+
+def hand_made_pre_lab_2():
+    return FakeTask("H1", "MATSCI 88Q: Pre-lab 2 (Gradescope)", FakeDue(datetime(2026, 10, 5, 12, 0)), project_id="P-MAT",
+                    description="For Lab 2 (Tue Oct 6). No late pre-labs.")
+
+
+async def answer(job, store, approved):
+    """What chat does with a yes/no: clear the proposal, then call the job's handler."""
+    payload = store.pending_job()["payload"]
+    store.kv_delete("pending_job")
+    return await job.approve_match(payload, approved)
+
+
+async def test_a_new_item_that_looks_like_a_hand_made_task_is_asked_about_not_created(tmp_path):
+    browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
+    job, store, todoist, out = make_project_job(tmp_path, [hand_made_pre_lab_2()], browser=browser)
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert [t.id for t in todoist.all_tasks()] == ["H1"]                       # nothing made while she decides
+    assert out.sent == ["gradescope: a new assignment looks like a task you already have:\n"
+                        "- Lab 2: Pre Lab → MATSCI 88Q: Pre-lab 2 (Gradescope) (both due mon oct 5 12:00pm)\n"
+                        "reply yes to link them (i'll tick it when you submit and follow gradescope's date changes), "
+                        "or no to add it as a new task"]
+    assert store.pending_job()["kind"] == "gradescope_match"
+    assert ("gradescope", 8676500) not in store.links()
+    await job.run()
+    assert len(out.sent) == 1 and len(todoist.all_tasks()) == 1               # asked once; still waiting
+
+
+async def test_yes_links_the_hand_made_task_so_submitting_ticks_it(tmp_path):
+    browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
+    job, store, todoist, out = make_project_job(tmp_path, [hand_made_pre_lab_2()], browser=browser)
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert await answer(job, store, True) == "linked 1: Lab 2: Pre Lab → MATSCI 88Q: Pre-lab 2 (Gradescope)"
+    link = store.links()[("gradescope", 8676500)]
+    assert (link.task_id, link.adopted) == ("H1", True)
+    await job.run()
+    assert len(out.sent) == 1 and [t.id for t in todoist.all_tasks()] == ["H1"]
+    browser.pages[MAT_GS] = [PRE_LAB_2(submitted=True)]
+    await job.run()
+    assert todoist.get_task("H1").is_completed
+    assert out.sent[-1].startswith("gradescope sync\ncompleted 1")
+
+
+async def test_yes_says_so_when_the_dates_differ_but_leaves_hers(tmp_path):
+    mine = FakeTask("H2", "CME 102: Pset1 (Gradescope)", FakeDue(datetime(2026, 9, 30, 23, 59)), project_id="P-CME")
+    job, store, todoist, out = make_project_job(tmp_path, [mine])              # Gradescope: Pset1 due thu oct 1 11:59pm
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert "- Pset1 → CME 102: Pset1 (Gradescope) (gradescope: thu oct 1 11:59pm, yours: wed sep 30 11:59pm)" in out.sent[0]
+    reply = await answer(job, store, True)
+    assert reply == ("linked 1: Pset1 → CME 102: Pset1 (Gradescope)\n"
+                     "heads up: gradescope has CME 102: Pset1 (Gradescope) due thu oct 1 11:59pm, yours says wed sep 30 11:59pm. i left yours")
+    assert todoist.get_task("H2").due.date == datetime(2026, 9, 30, 23, 59)
+
+
+async def test_an_exact_title_hand_made_task_is_asked_about_too_never_linked_silently(tmp_path):
+    mine = FakeTask("H2", "CME 102: Pset1 (Gradescope)", FakeDue(datetime(2026, 10, 1, 23, 59)), project_id="P-CME")
+    job, store, todoist, out = make_project_job(tmp_path, [mine])
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert ("gradescope", 8709892) not in store.links()
+    assert out.sent[0].startswith("gradescope: a new assignment looks like a task you already have:")
+
+
+async def test_no_adds_it_as_its_own_task_and_is_not_asked_again(tmp_path):
+    browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
+    job, store, todoist, out = make_project_job(tmp_path, [hand_made_pre_lab_2()], browser=browser)
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert await answer(job, store, False) == "ok, added it as a new task: MATSCI 88Q: Lab 2: Pre Lab (Gradescope)"
+    assert sorted(t.content for t in todoist.all_tasks()) == ["MATSCI 88Q: Lab 2: Pre Lab (Gradescope)",
+                                                              "MATSCI 88Q: Pre-lab 2 (Gradescope)"]
+    await job.run()
+    assert len(out.sent) == 1 and len(todoist.all_tasks()) == 2 and store.pending_job() is None
+
+
+async def test_a_match_waits_behind_another_jobs_proposal_without_creating_a_twin(tmp_path):
+    browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
+    job, store, todoist, out = make_project_job(tmp_path, [hand_made_pre_lab_2()], browser=browser)
+    store.kv_set("gradescope_first_run_done", "1")
+    store.propose_job("outlook_new", {"digest": "x"}, "outlook: 1 meeting. yes or no?", at=NOW)
+    assert await job.run() is None and out.sent == [] and len(todoist.all_tasks()) == 1
+    assert await job.run(quiet=True) == ("gradescope: 1 new assignment looks like a task you already have; "
+                                         "i'll ask once you've answered the outlook proposal")
+
+
+async def test_an_item_whose_canvas_twin_has_a_task_is_linked_to_it_by_id(tmp_path):
+    canvas_made = FakeTask("C1", "MATSCI 88Q: Pre-lab 2", FakeDue(local(2026, 10, 5, 12)), project_id="P-MAT",
+                           description="External tool on [Canvas](https://canvas.stanford.edu/courses/232193/assignments/828800)")
+    browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
+    job, store, todoist, out = make_project_job(tmp_path, [canvas_made, hand_made_pre_lab_2()], browser=browser)
+    store.kv_set("gradescope_first_run_done", "1")
+    store.link("assignment", 828800, 232193, "C1", adopted=False, name="Pre-lab 2", due_at="2026-10-05T19:00:00+00:00",
+               submitted=False)
+    store.kv_set("gradescope_twins", json.dumps({"8676500": 828800}))
+    await job.run()
+    assert store.links()[("gradescope", 8676500)].task_id == "C1"
+    assert out.sent == ["gradescope sync\nlinked 1 to tasks you already had:\n  - Lab 2: Pre Lab → MATSCI 88Q: Pre-lab 2"]
+    assert store.pending_job() is None and len(todoist.all_tasks()) == 2
+
+
+async def test_a_question_made_moot_by_a_canvas_twin_is_withdrawn(tmp_path):
+    browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
+    job, store, todoist, out = make_project_job(tmp_path, [hand_made_pre_lab_2()], browser=browser)
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert store.pending_job()["kind"] == "gradescope_match"
+    store.link("assignment", 828800, 232193, "H1", adopted=True, name="Pre-lab 2", due_at=None, submitted=False)  # the canvas sync adopted it
+    store.kv_set("gradescope_twins", json.dumps({"8676500": 828800}))
+    await job.run()
+    assert store.links()[("gradescope", 8676500)].task_id == "H1" and store.pending_job() is None
+    assert out.sent[-1] == ("gradescope sync\nlinked 1 to tasks you already had:\n  - Lab 2: Pre Lab → MATSCI 88Q: Pre-lab 2 (Gradescope)\n"
+                            "notes:\n  - no need to answer my question about Lab 2: Pre Lab, that's sorted")
+
+
+def settings_at(tmp_path):
+    return SimpleNamespace(tz=TZ, complete_when_submitted=True, include_undated=False, batch_min_size=2,
+                           db_path=tmp_path / "t.sqlite3", canvas_url="", canvas_token="", todoist_token="")
+
+
+def canvas_pre_lab_2(**kw):
+    return CanvasItem(kind="assignment", canvas_id=828800, course_id=232193, name="Pre-lab 2",
+                      due_at=datetime(2026, 10, 5, 19, 0, tzinfo=timezone.utc),
+                      html_url="https://canvas.stanford.edu/courses/232193/assignments/828800",
+                      submission_types=("external_tool",), external_url="https://lti.int.turnitin.com/launch/gs-proxy",
+                      group_id=None, group_name=None, submitted=False, published=True, gradescope_id=8676500, **kw)
+
+
+async def test_canvas_first_then_gradescope_makes_one_task_with_both_ids(tmp_path):
+    job, store, todoist, out = make_project_job(tmp_path, [], browser=PagesBrowser({MAT_GS: [PRE_LAB_2()]}))
+    store.kv_set("gradescope_first_run_done", "1")
+    report = run_sync(settings_at(tmp_path), job.courses_cfg, todoist=todoist, canvas=FakeCanvas([canvas_pre_lab_2()]), store=store)
+    assert report.created == ["MATSCI 88Q: Pre-lab 2 (due Oct 5 12:00pm)"]
+    (task,) = todoist.all_tasks()
+    await job.run()
+    assert [t.id for t in todoist.all_tasks()] == [task.id]
+    assert store.links()[("gradescope", 8676500)].task_id == task.id == store.links()[("assignment", 828800)].task_id
+
+
+async def test_other_jobs_name_the_match_question_when_they_wait_behind_it(tmp_path):
+    browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
+    job, store, todoist, out = make_project_job(tmp_path, [hand_made_pre_lab_2()], browser=browser)
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert store.proposal_slot("duplicates", "d") == "gradescope match"

@@ -13,6 +13,7 @@ than a steady stream (see RESEARCH.md → Canvas API cheat sheet).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -36,6 +37,7 @@ class CanvasItem:
     group_name: str | None
     submitted: bool
     published: bool
+    gradescope_id: int | None = None  # the Gradescope assignment an external tool opens, when Canvas says
 
     @property
     def key(self) -> tuple[str, int]:
@@ -43,7 +45,7 @@ class CanvasItem:
 
     @property
     def is_gradescope(self) -> bool:
-        return bool(self.external_url and "gradescope" in self.external_url.lower())
+        return self.gradescope_id is not None or bool(self.external_url and "gradescope" in self.external_url.lower())
 
 
 def parse_canvas_time(value: str | None) -> datetime | None:
@@ -52,6 +54,27 @@ def parse_canvas_time(value: str | None) -> datetime | None:
         return None
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return dt.astimezone(timezone.utc)
+
+
+GRADESCOPE_RESOURCE_RE = re.compile(r"assignment-(\d+)")
+GRADESCOPE_URL_RE = re.compile(r"gradescope\.com/courses/\d+/assignments/(\d+)")
+
+
+def gradescope_id_of(ext: dict | None) -> int | None:
+    """Which Gradescope assignment a Canvas external-tool assignment opens, if Canvas says.
+
+    Stanford's Gradescope tool launches through a proxy (lti.int.turnitin.com/launch/gs-proxy),
+    so the URL doesn't name the assignment, but the launch parameters do:
+    custom_params.custom_gradescope_resource_id = "assignment-8676496". That id is the same one
+    the Gradescope sync links, which is how one task can carry both (see twins.py).
+    """
+    if not isinstance(ext, dict):
+        return None
+    params = ext.get("custom_params") or {}
+    m = GRADESCOPE_RESOURCE_RE.fullmatch(str(params.get("custom_gradescope_resource_id") or "").strip())
+    if m is None:
+        m = GRADESCOPE_URL_RE.search(str(ext.get("url") or ""))
+    return int(m[1]) if m else None
 
 
 def _is_submitted(submission: dict | None) -> bool:
@@ -95,6 +118,7 @@ class CanvasClient:
                 group_name=groups.get(group_id),
                 submitted=_is_submitted(getattr(a, "submission", None)),
                 published=bool(getattr(a, "published", True)),
+                gradescope_id=gradescope_id_of(ext),
             ))
 
         try:

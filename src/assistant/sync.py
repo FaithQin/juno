@@ -434,6 +434,14 @@ def adopt_same_title(items: list[CanvasItem], active_tasks, links: dict[tuple[st
     return new
 
 
+def task_title(task_id: str, active: dict, rows: dict[str, TaskRow]) -> str:
+    """A task's title for a report: the live one, else the last one remembered (it may be done)."""
+    if task_id in active:
+        return active[task_id].content
+    row = rows.get(task_id)
+    return row.content if row is not None and row.content else f"task {task_id}"
+
+
 def _task_due_iso(task) -> str | None:
     due = getattr(task, "due", None)
     if due is None or getattr(due, "date", None) is None:
@@ -656,6 +664,7 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
     (tests pass fakes)."""
     from .canvas_client import CanvasClient
     from .todoist_client import TodoistClient
+    from .twins import link_twins, load_twins, record_twins, twins_in
 
     store = store or Store(settings.db_path)
     run_id = store.start_run("sync")
@@ -679,17 +688,20 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
                 print(f"canvas: {course.code} ({cid}) → {len(got)} items")
             items.extend(got)
 
-        # adopt hand-made tasks (by link, then by exact title), then line the remembered rows up with what is active
+        # adopt hand-made tasks (by link), join a Gradescope assignment's task (by id), then by exact
+        # title; then line the remembered rows up with what is active
         links = store.links()
         tasks = store.tasks()
         live_sections = {name: sec.id for name, sec in sections.items()}
         by_section = {sid: code for code, sid in courses_cfg.course_sections(live_sections).items()}
         task_course = {t.id: course_of(t, sections=by_section, projects=courses_cfg.course_by_project()) for t in active}
         by_task_id = {t.id: t for t in active}
+        twins = {**load_twins(store), **twins_in(items)} if dry_run else record_twins(store, items)
         by_link = adopt_links(active, items, links)
-        same_title = adopt_same_title(items, active, {**links, **{l.key: l for l in by_link}},
+        by_twin = link_twins(items, {**links, **{l.key: l for l in by_link}}, twins)
+        same_title = adopt_same_title(items, active, {**links, **{l.key: l for l in by_link + by_twin}},
                                       course_for=by_id, task_course=task_course)
-        for link in by_link + same_title:
+        for link in by_link + by_twin + same_title:
             links[link.key] = link
             if not dry_run:
                 store.link(link.kind, link.canvas_id, link.course_id, link.task_id, adopted=True,
@@ -704,7 +716,7 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
         )
         report = apply_plan(plan, todoist=todoist, store=store, project_id=project.id, sections=sections,
                             tz=settings.tz, dry_run=dry_run)
-        report.adopted += [f"{l.name} → {by_task_id[l.task_id].content}" for l in same_title]
+        report.adopted += [f"{l.name} → {task_title(l.task_id, by_task_id, tasks)}" for l in by_twin + same_title]
 
         # bookkeeping: refresh what Canvas says for every linked item we saw
         if not dry_run:

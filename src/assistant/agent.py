@@ -302,7 +302,7 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         not an answer to it.
 
         Args:
-            approved: True for yes (link and add), False for no (skip).
+            approved: True for yes, False for no (the quoted question says what each does).
         """
         return await ctx.deps.answer_proposal(approved)
 
