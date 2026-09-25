@@ -209,3 +209,21 @@ Faith: "juno should also check to make sure there are no duplicate tasks in todo
 | When | after every hourly Canvas sync, and on demand ("check for duplicates") |
 | Removal | **proposed, never automatic**; yes deletes the copies with undo snapshots and moves their sync links to the kept task; no is remembered per pair |
 | Prevention | both syncs adopt an existing task with the exact same title in the same course instead of creating a twin (reported as "linked … to tasks you already had") |
+
+## Hand-made tasks vs Gradescope, and Canvas/Gradescope twins (2026-09-24, late night)
+
+From the homework audit that night (Faith's instructions, marked; the rest **default (mine)**). Walkthrough: `docs/11-hand-made-and-twins.md`.
+
+| Decision | Choice |
+|---|---|
+| New Gradescope assignment that plausibly is a task she wrote herself | **ask once over Telegram, one question at a time; never link silently** (Faith). The assignment is held back (no twin) until she answers |
+| What "plausibly" means | same course, same numbers (PSET 1 = Pset1 = Problem Set 1), same pre/post/lab/pset kind words, due dates within ~2 days (Faith); no number, no guess (mine) |
+| Yes | link recorded (`adopted`), so Gradescope's later date changes move it and a submission ticks it (Faith). Her title, notes and **current date are left alone**, and the reply says if the dates differ (mine, from the 2026-09-22 rule that adopted tasks change date only when the source changes it) |
+| No | the Gradescope task is created right away, as before (Faith); that pair is never asked about again (mine) |
+| Several matches at once | one question lists them all; yes/no answers all of them (mine; same as the first-run question) |
+| A question that became moot (Canvas linked it by id) | withdrawn, and the sync text says so (mine) |
+| Exact-title hand-made task, Gradescope side | **asked like any other match** (follows "never link silently"); `adopt_same_title` now only shares tasks another sync already follows. **Open:** the Canvas sync still adopts an exact-title hand-made task without asking (texts afterwards), from the duplicates change earlier tonight. Ask Faith whether that should ask too |
+| Canvas external tool that is a Gradescope assignment | **the same work: both ids linked to one task** (Faith). Identified **by id** (`custom_gradescope_resource_id` in the Canvas launch parameters), not by name and due time: no guess, so no question (mine) |
+| Which copy the duplicate check keeps | **the task linked to the source that ticks on submission** (Faith): a Gradescope link outranks the Canvas half of a Gradescope assignment; a plain Canvas link still outranks both (mine) |
+| Notes on a deleted copy | **carried over to the kept task** (Faith), logged so undo can take them back (mine) |
+| Faith's existing duplicates | **not deleted by the agent**; listed and proposed, she decides (Faith) |

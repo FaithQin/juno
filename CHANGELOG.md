@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-24 (late night, last)
+- Gradescope: a new assignment that plausibly is a task Faith wrote herself (same course, number, pre/post/lab/pset
+  words, due within 2 days; "PSET 1" = "Pset1" = "Problem Set 1") is asked about once over Telegram and held back
+  meanwhile; yes links it (her title/notes/date kept, date differences mentioned), no creates it as before. Exact-title
+  hand-made matches are asked too; `adopt_same_title` on the Gradescope side only shares tasks another sync follows.
+- Canvas external tools that open a Gradescope assignment (MATSCI 88Q, CME 102) are linked to the same task by id
+  (`custom_gradescope_resource_id`), from either side; no more Canvas/Gradescope twins.
+- Duplicate check sees those twins, keeps the Gradescope-linked task, and carries notes from a deleted copy onto it.
+  Before this, the queued proposal would have deleted her hand-made Lab 1 tasks (with notes) and kept a twin.
+- `deploy.sh` excludes `.claude/`. `docs/11-hand-made-and-twins.md`. 265 tests. Deployed `ad55a1c`; check ok,
+  dry-run sync: only the CME 102 Pset1 twin link.
+
 ## 2026-09-24 (late night, later still)
 - Duplicate tasks: after every Canvas sync (and on "check for duplicates") juno finds same-title / same-link twins in a
   project and proposes deleting the copies (undoable; links move to the kept task). Both syncs now adopt an existing
