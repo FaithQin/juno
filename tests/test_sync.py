@@ -229,3 +229,22 @@ def test_apply_marks_done_quizzes_in_the_description():
     assert "- ✅ [3. Quiz 3](" in new_desc and "- [2. Quiz 2](" in new_desc and "- [4. Quiz 4](" in new_desc
     assert report.progress == ["ENGR 40M quizzes 2–4: 1/3 done (3. Quiz 3)"]
     assert "progress 1:" in format_report(report)
+
+
+def test_adopt_same_title_links_an_item_to_the_task_the_other_sync_made():
+    """The Canvas sync and the Gradescope sync each know one side of a Gradescope-linked assignment.
+    An exact title match (course code and source suffix stripped) makes them share one task."""
+    from assistant.sync import adopt_same_title
+
+    matsci = Course(code="MATSCI 88Q", canvas_id=232193)
+    gs_task = FakeTask("G1", "MATSCI 88Q: Pre-lab 1 (Gradescope)", "https://www.gradescope.com/courses/1/assignments/11")
+    near = FakeTask("X1", "MATSCI 88Q: Pre-lab 10", "")
+    elsewhere = FakeTask("E1", "EE 100: Pre-lab 1", "")
+    canvas_item = item(900, "Pre-lab 1", course=matsci, group=(5, "Assignments"), types=("external_tool",),
+                       ext="https://www.gradescope.com/courses/1/assignments/11")
+    links = {("gradescope", 11): ItemLink("gradescope", 11, 1, "G1", False, "Pre-lab 1", None, False)}
+    course_for, task_course = {232193: matsci}, {"G1": "MATSCI 88Q", "X1": "MATSCI 88Q", "E1": "EE 100"}
+    new = adopt_same_title([canvas_item], [gs_task, near, elsewhere], links, course_for=course_for, task_course=task_course)
+    assert [(l.key, l.task_id, l.adopted, l.due_at) for l in new] == [(("assignment", 900), "G1", True, FRI.isoformat())]
+    links[("assignment", 900)] = new[0]
+    assert adopt_same_title([canvas_item], [gs_task], links, course_for=course_for, task_course=task_course) == []

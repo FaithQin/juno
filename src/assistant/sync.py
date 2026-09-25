@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo
 from .canvas_client import CanvasItem
 from .config import Course
 from .db import ItemLink, Store, TaskRow
+from .tasks import course_of
 
 CANVAS_LINK_RE = re.compile(r"https?://[^\s/)]+/courses/(\d+)/(assignments|quizzes)/(\d+)")
 GRADESCOPE_LINK_RE = re.compile(r"https?://(?:www\.)?gradescope\.com/courses/(\d+)/assignments/(\d+)")
@@ -390,6 +391,49 @@ def adopt_by_title(items: list[CanvasItem], active_tasks, *, course_for: dict[in
     return pairs
 
 
+SOURCE_SUFFIX_RE = re.compile(r"\((gradescope|paperless|canvas)\)\s*$", re.IGNORECASE)
+
+
+def _title_key(text: str, course: Course) -> str:
+    """'MATSCI 88Q: Pre-lab 1 (Gradescope)' → 'prelab1' for MATSCI 88Q: course code and a trailing
+    source suffix ignored, case and punctuation too."""
+    body = _squash(SOURCE_SUFFIX_RE.sub("", text))
+    code = _squash(course.code)
+    return body[len(code):] if code and body.startswith(code) else body
+
+
+def adopt_same_title(items: list[CanvasItem], active_tasks, links: dict[tuple[str, int], ItemLink], *,
+                     course_for: dict[int, Course], task_course: dict[str, str]) -> list[ItemLink]:
+    """Unlinked items whose name is *exactly* an existing task's title, in the same course.
+
+    This is where the Canvas sync and the Gradescope sync meet: each sees one side of a
+    Gradescope-linked assignment and would otherwise make its own task for it. Exact equality
+    only (the research is clear that looser title matching duplicates on renames); the oldest
+    match wins if there are several, and the duplicate check reports the rest. Returns the new
+    links (not yet persisted), with the item's due date so the next sync doesn't "fix" one she set.
+    """
+    new: list[ItemLink] = []
+    used: set[str] = set()
+    for it in items:
+        if it.key in links:
+            continue
+        course = course_for.get(it.course_id)
+        if course is None:
+            continue
+        key = _title_key(it.name, course)
+        if len(key) < 3:
+            continue
+        matches = [t for t in active_tasks
+                   if t.id not in used and task_course.get(t.id) == course.code and _title_key(t.content, course) == key]
+        if not matches:
+            continue
+        t = sorted(matches, key=lambda t: (str(getattr(t, "created_at", "") or ""), t.id))[0]
+        used.add(t.id)
+        new.append(ItemLink(kind=it.kind, canvas_id=it.canvas_id, course_id=it.course_id, task_id=t.id, adopted=True,
+                            name=it.name, due_at=iso(it.due_at), submitted=it.submitted))
+    return new
+
+
 def _task_due_iso(task) -> str | None:
     due = getattr(task, "due", None)
     if due is None or getattr(due, "date", None) is None:
@@ -407,6 +451,7 @@ def _task_due_iso(task) -> str | None:
 @dataclass
 class Report:
     dry_run: bool
+    adopted: list[str] = field(default_factory=list)      # "item → task you already had" (exact title match)
     created: list[str] = field(default_factory=list)
     joined: list[str] = field(default_factory=list)
     due_updated: list[str] = field(default_factory=list)
@@ -418,7 +463,7 @@ class Report:
 
     @property
     def changed(self) -> bool:
-        return bool(self.created or self.joined or self.due_updated or self.completed or self.progress)
+        return bool(self.adopted or self.created or self.joined or self.due_updated or self.completed or self.progress)
 
 
 def _destination(course: Course, *, todoist, project_id: str, sections: dict) -> tuple[str, str | None]:
@@ -542,6 +587,9 @@ def mark_done_lines(description: str, done_urls: list[str]) -> str:
 
 def format_report(r: Report) -> str:
     lines = ["sync" + (" (dry run, nothing written)" if r.dry_run else "")]
+    if r.adopted:
+        lines.append(f"linked {len(r.adopted)} to tasks you already had:")
+        lines += [f"  - {x}" for x in r.adopted]
     if r.created:
         lines.append(f"added {len(r.created)}:")
         lines += [f"  - {x}" for x in r.created]
@@ -631,10 +679,17 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
                 print(f"canvas: {course.code} ({cid}) → {len(got)} items")
             items.extend(got)
 
-        # adopt hand-made tasks, then line the remembered rows up with what is active
+        # adopt hand-made tasks (by link, then by exact title), then line the remembered rows up with what is active
         links = store.links()
         tasks = store.tasks()
-        for link in adopt_links(active, items, links):
+        live_sections = {name: sec.id for name, sec in sections.items()}
+        by_section = {sid: code for code, sid in courses_cfg.course_sections(live_sections).items()}
+        task_course = {t.id: course_of(t, sections=by_section, projects=courses_cfg.course_by_project()) for t in active}
+        by_task_id = {t.id: t for t in active}
+        by_link = adopt_links(active, items, links)
+        same_title = adopt_same_title(items, active, {**links, **{l.key: l for l in by_link}},
+                                      course_for=by_id, task_course=task_course)
+        for link in by_link + same_title:
             links[link.key] = link
             if not dry_run:
                 store.link(link.kind, link.canvas_id, link.course_id, link.task_id, adopted=True,
@@ -649,6 +704,7 @@ def run_sync(settings, courses_cfg, *, dry_run: bool = False, verbose: bool = Fa
         )
         report = apply_plan(plan, todoist=todoist, store=store, project_id=project.id, sections=sections,
                             tz=settings.tz, dry_run=dry_run)
+        report.adopted += [f"{l.name} → {by_task_id[l.task_id].content}" for l in same_title]
 
         # bookkeeping: refresh what Canvas says for every linked item we saw
         if not dry_run:

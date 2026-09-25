@@ -419,3 +419,12 @@ def test_one_unreadable_sub_project_does_not_break_chat_or_nudges_for_every_clas
     ops.todoist = OneBrokenProject(deepcopy(MIXED))
     got = {d.content for d in ops.due_tasks()}
     assert "ENGR 40M: Sign up for a lab section" in got and "Assignment 1 (Paperless)" not in got
+
+
+def test_find_duplicates_runs_the_check_when_wired(tmp_path):
+    ops, *_ = make_ops(tmp_path, SAMPLE)
+    assert ops.find_duplicates() == "the duplicate check isn't available in this context"
+    ops.check_duplicates = lambda: None
+    assert ops.find_duplicates() == "todoist: no duplicate tasks"
+    ops.check_duplicates = lambda: "todoist: 1 pair looks like duplicates.\n- a looks like a copy of b\nreply yes to delete the copies (undoable), or no to keep them all"
+    assert ops.find_duplicates().startswith("todoist: 1 pair looks like duplicates.")

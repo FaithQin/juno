@@ -27,6 +27,7 @@ from .gcal import GoogleCalendar
 from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, GradescopeSync
 from .calendar_sync import JOB_KIND as CALENDAR_JOB, CalendarSync, canvas_events_from_api
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
+from .duplicates import JOB_KIND as DUPLICATES_JOB, DuplicateCheck
 from .outlook_sync import JOB_KIND as OUTLOOK_JOB, OutlookSync
 from .status import describe_runtime
 from .todoist_client import TodoistClient
@@ -183,8 +184,16 @@ async def serve(rt: Runtime) -> None:
     if not rt.settings.allowed_chat_ids:
         log.warning("TELEGRAM_CHAT_IDS is empty: setup mode. Send /start to the bot to learn your chat id.")
 
+    duplicates = DuplicateCheck(todoist=rt.todoist, store=rt.store, courses=[c.code for c in rt.courses_cfg.courses],
+                                tz=rt.settings.tz, send=channel.send, now=now_utc)
+    rt.session.job_handlers[DUPLICATES_JOB] = duplicates.approve
+
     async def sync_job():
         await run_sync_job(run=lambda: run_sync(rt.settings, rt.courses_cfg), send=channel.send)
+        try:
+            await duplicates.run()             # right after a sync is when a twin would have appeared
+        except Exception:
+            log.exception("duplicate check failed")
 
     async def nudges_job():
         await run_nudges_job(rt.ops, rt.store, send=channel.send)
@@ -213,6 +222,7 @@ async def serve(rt: Runtime) -> None:
     loop = asyncio.get_running_loop()
     rt.ops.sync_canvas = lambda: run_sync(rt.settings, rt.courses_cfg)
     rt.ops.sync_gradescope = lambda: asyncio.run_coroutine_threadsafe(gradescope.run(quiet=True), loop).result(timeout=300)
+    rt.ops.check_duplicates = lambda: asyncio.run_coroutine_threadsafe(duplicates.run(quiet=True), loop).result(timeout=120)
 
     calendar_sync = build_calendar_sync(rt, channel.send)
     rt.session.job_handlers[CALENDAR_JOB] = calendar_sync.approve

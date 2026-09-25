@@ -217,3 +217,17 @@ async def test_a_legacy_course_section_is_created_once_across_runs(tmp_path):
     assert [t.content for t in todoist.tasks("CLASSES")] == ["CME 102: Pset1 (Gradescope)", "CME 102: Pset2 (Gradescope)"]
     assert todoist.sections_created == [("CLASSES", "CME 102")]
     assert {t.section_id for t in todoist.tasks("CLASSES")} == {"S-CME 102"}
+
+
+async def test_an_assignment_the_canvas_sync_already_made_is_adopted_not_twinned(tmp_path):
+    canvas_made = FakeTask("T9", "CME 102: Pset1", project_id="P-CME",
+                           description="https://canvas.stanford.edu/courses/232579/assignments/77")
+    job, store, todoist, out = make_project_job(tmp_path, [canvas_made])
+    store.kv_set("gradescope_first_run_done", "1")
+    store.link("assignment", 77, 232579, "T9", adopted=False, name="Pset1", due_at=None, submitted=False)
+    await job.run()
+    assert [t.content for t in todoist.all_tasks()] == ["CME 102: Pset1"]                 # no "(Gradescope)" twin
+    assert store.links()[("gradescope", 8709892)].task_id == "T9"
+    assert out.sent[0].startswith("gradescope sync\nlinked 1 to tasks you already had:\n  - Pset1 → CME 102: Pset1")
+    await job.run()
+    assert len(out.sent) == 1

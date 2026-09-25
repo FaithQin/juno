@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-09-24 (~17:00 PDT, after the Todoist sub-project move)
+# Handoff — state as of 2026-09-24 (~22:10 PDT, after the duplicate check)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
@@ -15,6 +15,7 @@ what to do next. **Update it at the end of every working session.**
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-09-24 14:43), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`; new items (incl. tentative invites) proposed, yes copies with all details; `sync_now("outlook")`; `assistant outlook --print` |
+| **Duplicate check** | after every hourly Canvas sync + "check for duplicates" | same-title / same-link twins in one project proposed for deletion (undoable, links move to the kept task); both syncs now adopt an exact-title match instead of creating a twin. `docs/10-duplicates.md` |
 | **Todoist layout: one sub-project per class** | — | deployed `03aba64` ~16:30 PDT. Classes (`6cXPJPmRH6GF2MPr`) holds only the 2 university deadlines; each course's tasks live in its sub-project (`project_id` in `courses.yaml`). The 6 old sections are deleted. `assistant check` shows all 6 "ok"; a dry-run sync after the move said "nothing to change" |
 
 ## Todoist move (2026-09-24, ~17:00 PDT, done)
@@ -40,16 +41,14 @@ what to do next. **Update it at the end of every working session.**
 - Details and reasoning: `docs/07-hardening.md`; decisions: `DECISIONS.md` (2026-09-24 night).
 
 ## Pending right now
-- **Two proposals will arrive in Telegram after the 2026-09-24 ~4:00pm PDT deploy.** Each is asked
-  once; a bare yes/no answers it while it is the last thing said, otherwise "yes to the outlook
-  one" / "no to the calendar one" (juno uses `answer_proposal`). One proposal is held at a time,
-  so the second waits until the first is answered.
-  1. **Outlook** (~10 min after start): 6 upcoming meetings, all matched to hand-made events on
-     her Google calendars (she copies by hand). Yes = link + tag them, nothing created. From then
-     on only genuinely new Outlook items are proposed.
-  2. **Canvas calendar first run** (~60 min after start): 9 SystemX seminar dates matched to
-     hand-made "EE 310" events plus Nov 26 as new. If Nov 26 is cancelled: "delete the nov 26
-     systemx seminar".
+- **Proposals queue, one at a time** (a bare yes/no answers the one that is out while it is the last
+  thing said; otherwise "yes to the outlook one" etc. via `answer_proposal`). As of 22:00 PDT:
+  1. **Canvas calendar first run: answered** (`calendar_first_run_done=1`).
+  2. **Outlook: waiting on Faith.** 6 upcoming meetings, all matched to hand-made events on her
+     Google calendars; yes = link + tag, nothing created. Then only new Outlook items are proposed.
+  3. **Duplicates: will be proposed after that** (first check runs with the next hourly sync after
+     the deploy): the two MATSCI 88Q pairs (Pre-lab 1, Post-lab 1: Canvas-made vs Gradescope-made).
+     Yes deletes the "(Gradescope)" copies and points their Gradescope links at the kept tasks.
 - **Faith to answer: which Canvas pages she still needs** (grades? modules? files?). Canvas
   browsing stays off; those become API tools.
 - **Faith to decide: history window.** Still 24 h (`ChatSession.window`). With caching and
@@ -100,7 +99,7 @@ what to do next. **Update it at the end of every working session.**
 6. Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 230 passing).
+1. `uv sync && uv run pytest` (expect 240 passing).
 2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md` and `docs/09-per-course-projects.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.

@@ -101,6 +101,13 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         return ctx.deps.sync_now(source)
 
     @agent.tool
+    def find_duplicates(ctx: RunContext[ChatOps]) -> str:
+        """Look for duplicate tasks in Todoist (the same task twice, e.g. one made from Canvas and one
+        from Gradescope). Reports the pairs and proposes deleting the copies; nothing is deleted
+        until Faith says yes. Use it when she asks about duplicates or says a task appears twice."""
+        return ctx.deps.find_duplicates()
+
+    @agent.tool
     def ed_announcements(ctx: RunContext[ChatOps], course: str, limit: int = 5) -> str:
         """Latest announcements and pinned posts from a course's Ed Discussion, with links.
         Much cheaper than browsing Ed; use this first for anything about announcements.

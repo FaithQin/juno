@@ -41,6 +41,7 @@ class ChatOps:
         self.sync_canvas = None               # () -> Report, wired by app.py
         self.sync_gradescope = None           # () -> str | None, wired by app.py (runs the async job on the main loop)
         self.sync_outlook = None              # () -> str | None, wired by app.py when OUTLOOK_ICS_URL is set
+        self.check_duplicates = None          # () -> str | None, wired by app.py (runs the duplicate check on the main loop)
         self.answer_job = None                # async (approved) -> str, wired by ChatSession
         self.store = store
         self.todoist = todoist
@@ -543,6 +544,14 @@ class ChatOps:
             except Exception as e:
                 parts.append(f"outlook: sync failed ({type(e).__name__})")
         return "\n\n".join(parts) if parts else "nothing to sync for that source"
+
+    def find_duplicates(self) -> str:
+        if self.check_duplicates is None:
+            return "the duplicate check isn't available in this context"
+        try:
+            return self.check_duplicates() or "todoist: no duplicate tasks"
+        except Exception as e:
+            return f"couldn't check for duplicates ({type(e).__name__})"
 
     def ed_announcements(self, course: str, limit: int = 5) -> str:
         from .ed import format_announcements, match_course

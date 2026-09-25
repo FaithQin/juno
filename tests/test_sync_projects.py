@@ -233,3 +233,18 @@ def test_a_reopened_task_with_mixed_links_is_not_ticked_again(tmp_path):
     report, store = sync(tmp_path, PROJECT_CFG, todoist, [item(1, "Lab 1", submitted=True)])
     assert report.completed == [] and not todoist.get_task("T1").is_completed
     assert store.tasks()["T1"].completed is True
+
+
+def test_a_gradescope_made_twin_is_adopted_by_the_canvas_sync_instead_of_a_second_task(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    twin = FakeTask("G1", "EE 100: Lab 1 (Gradescope)", FakeDue(FRI), project_id="P-EE",
+                    description="https://www.gradescope.com/courses/9/assignments/5")
+    store.link("gradescope", 5, 9, "G1", adopted=False, name="Lab 1", due_at=None, submitted=False)
+    remember(store, "G1", twin.content)
+    todoist = FakeTodoist([twin])
+    report, store = sync(tmp_path, PROJECT_CFG, todoist, [item(1, "Lab 1")])
+    assert report.created == [] and report.adopted == ["Lab 1 → EE 100: Lab 1 (Gradescope)"]
+    assert store.links()[("assignment", 1)].task_id == "G1"
+    assert [t.content for t in todoist.all_tasks()] == ["EE 100: Lab 1 (Gradescope)"]
+    report, _ = sync(tmp_path, PROJECT_CFG, todoist, [item(1, "Lab 1")])
+    assert report.adopted == [] and not report.changed                                # linked now: quiet

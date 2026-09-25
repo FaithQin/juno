@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-24 (late night, later still)
+- Duplicate tasks: after every Canvas sync (and on "check for duplicates") juno finds same-title / same-link twins in a
+  project and proposes deleting the copies (undoable; links move to the kept task). Both syncs now adopt an existing
+  task with the exact same title instead of creating a twin, which is how the two MATSCI 88Q pairs happened.
+  `docs/10-duplicates.md`.
+
 ## 2026-09-24 (night, latest)
 - Each class is now its own Todoist sub-project under Classes (Faith's ask). juno reads class tasks from Classes plus
   every course sub-project (task ids survive a move, so nothing is re-created or wrongly closed; syncs read strictly, chat and

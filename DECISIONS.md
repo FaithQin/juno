@@ -197,3 +197,15 @@ shoved all underneath classes". Asked how to handle juno, she chose **update bot
 | Old sections | tasks moved (same ids) into the sub-projects, then the empty sections removed |
 | New work | Canvas, Gradescope and chat-added course tasks go into the course sub-project, no section |
 | A course without `project_id` | **default (mine):** keeps the old layout (a section inside Classes), so an old config still works |
+
+## Duplicates (2026-09-24, late night)
+
+Faith: "juno should also check to make sure there are no duplicate tasks in todoist." Defaults (mine), one line each to change:
+
+| Decision | Choice |
+|---|---|
+| What counts | same project and (same title once course prefix, "(Gradescope)"-style suffix, case and punctuation are ignored, due dates ≤ 1 day apart) **or** the same Canvas/Gradescope assignment link in the descriptions |
+| Which one stays | the task a sync tracks (Canvas link over Gradescope link), else the older one |
+| When | after every hourly Canvas sync, and on demand ("check for duplicates") |
+| Removal | **proposed, never automatic**; yes deletes the copies with undo snapshots and moves their sync links to the kept task; no is remembered per pair |
+| Prevention | both syncs adopt an existing task with the exact same title in the same course instead of creating a twin (reported as "linked … to tasks you already had") |

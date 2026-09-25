@@ -19,7 +19,7 @@ from .canvas_client import CanvasItem
 from .config import CoursesConfig
 from .db import Store
 from .gradescope import BASE, match_courses, parse_course, parse_dashboard
-from .sync import adopt_by_title, adopt_links, apply_plan, format_report, iso, plan_sync
+from .sync import adopt_by_title, adopt_links, adopt_same_title, apply_plan, format_report, iso, plan_sync
 from .tasks import course_of
 
 Send = Callable[[str], Awaitable[None]]
@@ -140,9 +140,19 @@ class GradescopeSync:
                             f"once you've answered the {slot} proposal") if quiet else None
                 return question
 
+        # after the first run: an assignment the Canvas sync already made a task for is shared, not twinned
+        task_course = {t.id: self._course_of(t) for t in active}
+        same_title = adopt_same_title(items, active, links, course_for=course_for, task_course=task_course)
+        by_task = {t.id: t for t in active}
+        for link in same_title:
+            links[link.key] = link
+            self.store.link(link.kind, link.canvas_id, link.course_id, link.task_id, adopted=True,
+                            name=link.name, due_at=link.due_at, submitted=link.submitted)
+
         plan = plan_sync(items, course_for, links, tasks, tz=self.tz, complete_when_submitted=self.complete_when_submitted)
         report = apply_plan(plan, todoist=self.todoist, store=self.store, project_id=self.project_id,
                             sections=self._sections, tz=self.tz, dry_run=False)
+        report.adopted += [f"{l.name} → {by_task[l.task_id].content}" for l in same_title]
         if report.changed or report.errors:
             text = "gradescope " + format_report(report)
             if not quiet:
