@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-09-24 (late night, Pacific)
+# Handoff — state as of 2026-09-24 (~17:00 PDT, after the Todoist sub-project move)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
@@ -15,6 +15,15 @@ what to do next. **Update it at the end of every working session.**
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-09-24 14:43), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`; new items (incl. tentative invites) proposed, yes copies with all details; `sync_now("outlook")`; `assistant outlook --print` |
+| **Todoist layout: one sub-project per class** | — | deployed `03aba64` ~16:30 PDT. Classes (`6cXPJPmRH6GF2MPr`) holds only the 2 university deadlines; each course's tasks live in its sub-project (`project_id` in `courses.yaml`). The 6 old sections are deleted. `assistant check` shows all 6 "ok"; a dry-run sync after the move said "nothing to change" |
+
+## Todoist move (2026-09-24, ~17:00 PDT, done)
+- Faith asked for each class as its own sub-project under Classes. 68 open tasks and the 5 completed tasks
+  that were still in the old sections moved by id (same task ids, so juno's links held). Then the 6 empty sections
+  were deleted. Server check afterwards: 70 active tasks, 0 legacy sections, dry-run sync "nothing to change"
+  (same as before the move). Details: `docs/09-per-course-projects.md`.
+- The Todoist MCP's `update-tasks` reports "not found (404)" when it moves a *completed* task, but the move
+  goes through (the activity log and `fetch-object` confirm it). Don't retry, just verify.
 
 ## What changed tonight and why (Faith's evening message)
 - **Cost.** 2.5M tokens on 2026-09-24; the last request was 56k input tokens, $0.14, 0 read from
@@ -91,8 +100,8 @@ what to do next. **Update it at the end of every working session.**
 6. Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 182 passing).
-2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md` and `docs/08-outlook.md`.
+1. `uv sync && uv run pytest` (expect 230 passing).
+2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md` and `docs/09-per-course-projects.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.
 4. Ask Faith what's next; don't start a phase without her answers to its scoping questions.

@@ -9,6 +9,8 @@
   once, not once per run. Undo of a delete from an old section restores into the course sub-project.
   Reviewed by three agents; a draft "heal" rule was dropped because it would re-tick reopened tasks.
   `docs/09-per-course-projects.md`. 230 tests.
+- Deployed `03aba64` and moved Faith's Todoist over: 68 open + 5 completed class tasks into their sub-projects (same ids),
+  6 old sections deleted. Server check afterwards: 70 active tasks, 0 legacy sections, dry-run sync "nothing to change".
 
 ## 2026-09-24 (night, later)
 - Phase 7: Outlook meetings → Google Calendar from a published Outlook calendar link (ICS), every 10 min: new items
