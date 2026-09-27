@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-09-27
+- Paperless (cs198) login refreshed and shipped; HANDOFF records the re-login routine (rsync one file + restart, not a full deploy).
+
 ## 2026-09-24 (late night, last)
 - Gradescope: a new assignment that plausibly is a task Faith wrote herself (same course, number, pre/post/lab/pset
   words, due within 2 days; "PSET 1" = "Pset1" = "Problem Set 1") is asked about once over Telegram and held back

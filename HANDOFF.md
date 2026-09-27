@@ -14,7 +14,7 @@ what to do next. **Update it at the end of every working session.**
 | Morning brief | 07:00 daily | every dated Todoist task + calendars Stanford/TA/primary/StartX/Cal.com; waits ~10 min through a Todoist outage, then says so |
 | Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, **photos**, `answer_proposal`, `/status` (now with today's token use and cache share) |
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
-| Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-09-24 14:43), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
+| Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-09-27 12:40 PDT), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`; new items (incl. tentative invites) proposed, yes copies with all details; `sync_now("outlook")`; `assistant outlook --print` |
 | **Duplicate check** | after every hourly Canvas sync + "check for duplicates" | same-title / same-link / **Canvas-Gradescope twin** copies proposed for deletion (undoable, links move to the kept task, **her notes on a copy move to the kept task**). Keeps the task that ticks on submission (Gradescope over the Canvas half of a Gradescope assignment). The Canvas sync adopts exact-title matches; the Gradescope sync only shares tasks another sync follows. `docs/10-duplicates.md`, `docs/11-…` |
 | **Todoist layout: one sub-project per class** | — | deployed `03aba64` ~16:30 PDT. Classes (`6cXPJPmRH6GF2MPr`) holds only the 2 university deadlines; each course's tasks live in its sub-project (`project_id` in `courses.yaml`). The 6 old sections are deleted. `assistant check` shows all 6 "ok"; a dry-run sync after the move said "nothing to change" |
@@ -70,6 +70,11 @@ what to do next. **Update it at the end of every working session.**
 - **Paperless will log out again** (Stanford SSO session cookies, roughly a day). juno says so when
   it happens; refresh with `uv run assistant browser-login paperless` on the Mac, then ship
   `data/browser/` (deploy.sh does it from a checkout that has that folder).
+
+- **Re-login routine (any saved site; Paperless needs it about daily):** on the Mac, in the project folder,
+  `uv run assistant browser-login paperless` (log in, close the window), then ship just that file and restart:
+  `rsync -az data/browser/paperless.json root@165.232.146.165:/opt/juno/data/browser/ && ssh root@165.232.146.165 'cd /opt/juno && docker compose restart juno'`.
+  Lighter and safer than `deploy.sh`, which also ships code and would revert the server from a checkout that isn't pulled.
 
 ## Infrastructure
 - Server: DigitalOcean droplet `165.232.146.165` (SFO), Ubuntu 24.04, Docker, project at `/opt/juno`.
