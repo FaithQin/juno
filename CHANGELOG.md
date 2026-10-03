@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-10-02
+- Paperless (cs198) login refreshed by Faith from the terminal and shipped (rsync one file + restart).
+
 ## 2026-09-27
 - Paperless (cs198) login refreshed and shipped; HANDOFF records the re-login routine (rsync one file + restart, not a full deploy).
 
