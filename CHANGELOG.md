@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-10-02
+- Dropped courses removed from `courses.yaml`: MATSCI 88Q (dropped Sep 30) and EE 310 (dropped Oct 2). Their Canvas
+  courses no longer sync, so nothing gets written to the EE 310 sub-project, which is now archived in Todoist.
+  `test_config` asserts neither code is in the repo config (test written first, failed, then passed). 263 passed,
+  2 skipped. Not deployed yet.
 - Paperless (cs198) login refreshed by Faith from the terminal and shipped (rsync one file + restart).
 
 ## 2026-09-27

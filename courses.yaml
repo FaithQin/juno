@@ -12,6 +12,7 @@ todoist:
   project_id: "6cXPJPmRH6GF2MPr"   # "Classes", under Areas
   project_name: "Classes"
 
+# Dropped (removed from the sync): MATSCI 88Q on 2026-09-30, EE 310 on 2026-10-02.
 courses:
   - code: "ENGR 40M"
     canvas_id: 231533
@@ -19,12 +20,6 @@ courses:
   - code: "CME 102"
     canvas_id: 232579
     project_id: "6hcWWXF7PMmh57v2"
-  - code: "MATSCI 88Q"
-    canvas_id: 232193
-    project_id: "6hcWWXGWxVCH6Hmc"
-  - code: "EE 310"
-    canvas_id: 230601
-    project_id: "6hcWWXFgVhMWm7fp"
   - code: "EE 100"
     canvas_id: 232825
     project_id: "6hcWWXGX4RFgHc5C"

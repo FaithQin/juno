@@ -99,9 +99,9 @@ def test_the_repo_courses_yaml_ships_every_course_with_its_sub_project():
     assert cfg.course_projects() == {
         "ENGR 40M": "6hcWWXF2wPQ63xGP",
         "CME 102": "6hcWWXF7PMmh57v2",
-        "MATSCI 88Q": "6hcWWXGWxVCH6Hmc",
-        "EE 310": "6hcWWXFgVhMWm7fp",
         "EE 100": "6hcWWXGX4RFgHc5C",
         "CS 106B": "6hcWWXHRpx3H2RvF",
     }
     assert {c.code: c.canvas_id for c in cfg.courses}["CS 106B"] is None
+    # Dropped courses stay out of the sync: MATSCI 88Q (Sep 30, 2026) and EE 310 (Oct 2, 2026).
+    assert not {"MATSCI 88Q", "EE 310"} & {c.code for c in cfg.courses}
