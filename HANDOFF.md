@@ -1,9 +1,9 @@
-# Handoff — state as of 2026-09-24 (~22:50 PDT, after hand-made matching and Canvas/Gradescope twins)
+# Handoff — state as of 2026-10-02 (~23:40 PDT, after dropping MATSCI 88Q and EE 310)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
 
-## What is live (verified on the server; last deploy `ad55a1c`, 2026-09-24 ~22:38 PDT)
+## What is live (verified on the server; last deploy `f10a52e`, 2026-10-02 ~23:28 PDT)
 | Piece | Cadence | Notes |
 |---|---|---|
 | Canvas → Todoist sync | hourly | adopted 52 hand-made tasks on 2026-09-22; batches same-day quizzes; retries transient errors |
@@ -17,7 +17,7 @@ what to do next. **Update it at the end of every working session.**
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-10-02), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`; new items (incl. tentative invites) proposed, yes copies with all details; `sync_now("outlook")`; `assistant outlook --print` |
 | **Duplicate check** | after every hourly Canvas sync + "check for duplicates" | same-title / same-link / **Canvas-Gradescope twin** copies proposed for deletion (undoable, links move to the kept task, **her notes on a copy move to the kept task**). Keeps the task that ticks on submission (Gradescope over the Canvas half of a Gradescope assignment). The Canvas sync adopts exact-title matches; the Gradescope sync only shares tasks another sync follows. `docs/10-duplicates.md`, `docs/11-…` |
-| **Todoist layout: one sub-project per class** | — | deployed `03aba64` ~16:30 PDT. Classes (`6cXPJPmRH6GF2MPr`) holds only the 2 university deadlines; each course's tasks live in its sub-project (`project_id` in `courses.yaml`). The 6 old sections are deleted. `assistant check` shows all 6 "ok"; a dry-run sync after the move said "nothing to change" |
+| **Todoist layout: one sub-project per class** | — | Classes (`6cXPJPmRH6GF2MPr`) holds only the 2 university deadlines; each course's tasks live in its sub-project (`project_id` in `courses.yaml`). **4 courses since 2026-10-02**: ENGR 40M, CME 102, EE 100, CS 106B. MATSCI 88Q (dropped Sep 30; its sub-project is empty) and EE 310 (dropped Oct 2; sub-project archived, 3 open tasks left there that Todoist leaves out of account-wide reads, so the brief and nudges don't see them) are out of `courses.yaml`. After the deploy: `assistant check` 4 × ok, 71 active tasks; dry-run sync read only the 4 sub-projects and the 3 Canvas courses, creates nothing |
 
 ## Todoist move (2026-09-24, ~17:00 PDT, done)
 - Faith asked for each class as its own sub-project under Classes. 68 open tasks and the 5 completed tasks
@@ -42,25 +42,17 @@ what to do next. **Update it at the end of every working session.**
 - Details and reasoning: `docs/07-hardening.md`; decisions: `DECISIONS.md` (2026-09-24 night).
 
 ## Pending right now
-- **Proposals queue, one at a time** (a bare yes/no answers the one that is out while it is the last
-  thing said; otherwise "yes to the outlook one" etc. via `answer_proposal`). As of 22:50 PDT:
-  1. **Outlook: waiting on Faith.** 6 upcoming meetings, all matched to hand-made events on her
-     Google calendars; yes = link + tag, nothing created.
-  2. **Duplicates: proposed with the first hourly Canvas sync after she answers Outlook.** Previewed on the
-     server (read-only, 22:40) with the new twin logic. Two groups, MATSCI 88Q Lab 1:
-     - keep `6hcV4XxhmGFjMXhJ` "Lab 1: Pre Lab (Gradescope)" (Gradescope-linked); delete Canvas copy `6hcX66cWvjqV6FcJ`
-       and her hand-made `6hc6W9fgcqQ8G3qJ` (its notes move onto the kept task).
-     - keep `6hcV4XrqpGvXj2xr` "Lab 1: Post Lab (Gradescope)"; delete `6hcX66fMPgMwPfPJ` and `6hc6W9jCPxcrJGVr` (notes move).
-     Faith was also asked in the Claude session (the agent deleted nothing). *Correction:* the previous handoff said yes
-     would delete the "(Gradescope)" copies. Under the old code that meant her hand-made tasks (with notes), and the
-     Gradescope-made copies would have survived. Fixed before it was ever asked.
-     Her post-lab note says "juno also added two copies of this assignment (Gradescope + Canvas)". It will be stale
-     once the copies are gone; she may want to trim it.
-  3. **Gradescope match questions start Fri Sep 25**, when ENGR 40M PSET 1 is released (ENGR 40M's Gradescope course
-     1395437 is on the dashboard, empty tonight). A read-only simulation against her real tasks paired PSET 1/2,
-     Lab 0/1/2A prelab and write-ups, CME Pset2/Pset6, MATSCI Lab 2 pre/post correctly; "Final Project Proposal" is not guessed.
-- **Next hourly Canvas sync will text one line**: "linked 1 to tasks you already had: Pset1 → CME 102: Pset1 (Gradescope)"
-  (Canvas 833182, undated, is the same assignment as Gradescope 8709892). Seen in the dry run.
+- **Stale duplicates proposal blocking the queue (found 2026-10-02).** Asked 2026-09-28, never answered. It is wrong:
+  it calls Faith's "Breakfast" tasks on consecutive days copies of each other, and her three "CME 102 Pset1: work
+  block / finish + submit" tasks copies of "CME 102: Pset1 (Gradescope)" (they share the assignment link). All 6 task
+  ids are no longer active. Proposals go one at a time, so nothing else (Outlook, Gradescope match questions) can be
+  asked until it is answered. **Faith should reply "no to the duplicates one"** (records the pairs as declined, deletes
+  nothing). The rule itself needs narrowing before it proposes again: a shared assignment link alone should not make
+  two tasks copies, and same-title tasks on consecutive days are a daily habit, not a copy (`duplicates.find_duplicates`).
+- **Next hourly sync will text a progress line labelled by task id** ("6hc6PpfWjfJMh5fr: 3/6 done (9. …, 10. Diodes,
+  11. Solar Cells)") instead of the ENGR 40M quiz-batch title, seen in the 2026-10-02 dry run. Cosmetic.
+- Sep 24 notes on the Outlook proposal, MATSCI 88Q duplicate groups and the CME Pset1 adoption line are superseded:
+  MATSCI tasks are all gone, and 1 Outlook event is linked. Gradescope match-question status was not re-checked.
 - **Faith to decide: should the Canvas sync ask too?** It still adopts a hand-made task whose title is exactly the
   Canvas name (e.g. Canvas "Pre-lab 2" → her "MATSCI 88Q: Pre-lab 2 (Gradescope)") and texts afterwards, per the
   duplicates change earlier tonight. The Gradescope side now always asks. See DECISIONS.md (2026-09-24, late night).
