@@ -259,3 +259,14 @@ no sources unless asked, and make juno aware of her class changes. Walkthrough: 
 | CS 106B's Canvas site | not synced: it is empty, and its assignments come from Paperless/Gradescope (mine) |
 | Class check | daily 9:30: texts once about a Canvas course or Todoist class project juno doesn't know, or a synced course Canvas no longer lists (mine) |
 
+## A reply to a replaced question (2026-10-04)
+
+A yes quoting a shared line of the old Sep 28 duplicates question would have approved its Oct 3 replacement.
+Walkthrough: `docs/12-replies-colors-planned-classes.md` §1.
+
+| Decision | Choice |
+|---|---|
+| Which message a reply answers | only one sent at or after the waiting question's `asked_at` (30 s of clock slack) can answer it (mine) |
+| Telegram gives no send time | not an answer; the model sees her message and asks (mine; Telegram always stamps real messages) |
+| Yes/no to an older version of the question | **juno says "nothing done: that question was replaced on …" and resends the current one, without the model** (Faith) |
+| Anything else in reply to a message from before the question | goes to the model, but `answer_proposal` is blocked for that turn, so it can't approve the new question (Faith chose the gate for replies to the old question; widened by me to any earlier message, since a reply is about what it replies to) |

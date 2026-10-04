@@ -135,7 +135,7 @@ what to do next. **Update it at the end of every working session.**
 8. Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 303 passing).
+1. `uv sync && uv run pytest` (expect 305 passing).
 2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md` and `docs/12-replies-colors-planned-classes.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.

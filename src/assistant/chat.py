@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dataclasses import replace
@@ -102,6 +102,7 @@ def compact_previous_turns(messages: list[ModelMessage], *, keep_images: int = K
 
 
 DEFAULT_RUN_TIMEOUT = timedelta(seconds=180)   # whole turn, all tool calls included
+CLOCK_SKEW = timedelta(seconds=30)             # Telegram's clock vs ours, when placing a message after a question
 
 @dataclass(frozen=True)
 class Reply:
@@ -185,7 +186,8 @@ class ChatSession:
         self.run_timeout = run_timeout
         self.pending: PendingApproval | None = None
         self.job_handlers: dict = {}      # kind → async (payload, approved) -> reply text
-        ops.answer_job = self._answer_job   # the answer_proposal tool lands here
+        self._reply_predates_job = False   # this turn replies to a message sent before the pending question
+        ops.answer_job = self._answer_from_model   # the answer_proposal tool lands here
 
     # -- proposals from scheduled jobs (e.g. the Gradescope first run) --------
 
@@ -201,6 +203,21 @@ class ChatSession:
         if handler is None:
             return f"i lost the handler for {job['kind']}; nothing done"
         return await handler(job["payload"], approved)
+
+    async def _answer_from_model(self, approved: bool) -> str:
+        if self._reply_predates_job:   # a reply is about the message it replies to, which came before this question
+            return ("not done: she's replying to a message from before this question was asked, so it isn't her "
+                    "answer to it. tell her nothing was done; if she meant this question, show it to her to answer")
+        return await self._answer_job(approved)
+
+    def _out_of_date(self) -> str:
+        """Her yes/no to a question that has since been replaced: nothing happens, and the current
+        question comes again as its own message, so a reply to it is unambiguous."""
+        job = self.store.pending_job()
+        text = (f"nothing done: that question was replaced on {self._stamp(datetime.fromisoformat(job['asked_at']))}. "
+                f"here's the current one, reply yes or no to it:\n\n{job['question']}")
+        self.note_sent(text)
+        return text
 
     def _job_is_fresh(self) -> bool:
         """A bare yes/no answers a job's proposal only while that proposal is the last thing said.
@@ -283,14 +300,24 @@ class ChatSession:
         verdict = True if approved else ToolDenied("faith said no")
         return await self._run(None, deferred=DeferredToolResults(approvals={p.tool_call_id: verdict}))
 
-    def _replies_to_proposal(self, reply: Reply | None) -> bool:
-        """Is she answering the pending proposal's own message? Then a yes/no is unambiguous, however
-        much chat happened since it was asked."""
+    def _proposal_reply(self, reply: Reply | None) -> str | None:
+        """How her Telegram reply relates to the pending proposal.
+        "current": the question's own message (its text, sent after it was asked), so a yes/no answers
+        it however much chat happened since. "replaced": one of juno's messages from before it was asked
+        that shares a line with it, i.e. an older question of the same kind ("reply yes to delete the
+        copies…" ends every duplicates question). "earlier": any other message from before it was asked.
+        Neither of the last two may answer it. None: no proposal, not a reply, or Telegram didn't say
+        when the message was sent (then the model asks)."""
         job = self.store.pending_job()
-        if reply is None or job is None or not job.get("question"):
-            return False
+        if reply is None or reply.sent_at is None or job is None or not job.get("question") or not job.get("asked_at"):
+            return None
         quoted, question = " ".join(reply.text.split()), " ".join(job["question"].split())
-        return len(quoted) >= 12 and quoted in question
+        sent = reply.sent_at if reply.sent_at.tzinfo else reply.sent_at.replace(tzinfo=timezone.utc)
+        if sent >= datetime.fromisoformat(job["asked_at"]) - CLOCK_SKEW:
+            return "current" if len(quoted) >= 12 and quoted in question else None
+        lines = (" ".join(line.split()) for line in job["question"].splitlines())
+        shared = (len(quoted) >= 12 and quoted in question) or any(len(line) >= 12 and line in quoted for line in lines)
+        return "replaced" if reply.from_juno and shared else "earlier"
 
     async def handle(self, text: str, *, images: list[BinaryContent] | None = None, reply_to: Reply | None = None) -> str:
         answer = _norm(text) if not images else ""       # a photo is never a yes or a no
@@ -303,10 +330,18 @@ class ChatSession:
             await self._resume(False)                    # close the dangling tool call, then move on
             reply = self._finish(await self._run(text, images=images, reply_to=reply_to))
             return f"skipped the pending {skipped}.\n\n{self._tidy(reply, text)}"
-        if (answer in YES or answer in NO) and (self._replies_to_proposal(reply_to) or (reply_to is None and self._job_is_fresh())):
-            return await self._answer_job(answer in YES)
+        which = self._proposal_reply(reply_to)
+        if answer in YES or answer in NO:
+            if which == "current" or (reply_to is None and self._job_is_fresh()):
+                return await self._answer_job(answer in YES)
+            if which == "replaced":
+                return self._out_of_date()
         # anything else: normal chat; a pending proposal keeps waiting and stays visible to the model
-        return self._tidy(self._finish(await self._run(text, images=images, reply_to=reply_to)), text)
+        self._reply_predates_job = which in ("replaced", "earlier")
+        try:
+            return self._tidy(self._finish(await self._run(text, images=images, reply_to=reply_to)), text)
+        finally:
+            self._reply_predates_job = False
 
     def _tidy(self, reply: str, asked: str) -> str:
         if self.pending is not None:                     # an approval question: nothing to tidy

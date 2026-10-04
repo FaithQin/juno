@@ -3,7 +3,8 @@
 - A Telegram reply carries the message she replied to; juno sees it with her text.
 - Texts juno sent on its own (nudges, the brief, sync notes) are part of the conversation, so she
   can answer them with or without Telegram's reply.
-- Replying yes/no to a proposal's message answers that proposal, however long ago it was asked.
+- Replying yes/no to a proposal's message answers that proposal, however long ago it was asked;
+  a reply to an older question it replaced never does (2026-10-04).
 - Web-search citations are stripped from replies unless she asks for sources.
 """
 
@@ -111,6 +112,84 @@ async def test_replying_yes_to_an_old_proposal_answers_it(tmp_path):
         reply = await session.handle("yes", reply_to=Reply(question, from_juno=True, sent_at=NOW - timedelta(days=2)))
     assert reply == "linked 6 existing events, nothing new to add" and answers == [True]
     assert store.pending_job() is None
+
+
+OLD_DUPES = ("todoist: 2 pairs look like duplicates.\n- Breakfast looks like a copy of Breakfast (both due sun sep 28)\n"
+             "- CME 102: Pset1 work block looks like a copy of CME 102: Pset1 work block\n"
+             "reply yes to delete the copies (undoable), or no to keep them all")
+NEW_DUPES = ("todoist: 2 pairs look like duplicates.\n"
+             "- ENGR 40M: Lab 1 prelab (Gradescope) looks like a copy of ENGR 40M: Prelab 1 (Gradescope)\n"
+             "- EE 160A: HW1 (due Fri Oct 9, week 3) looks like a copy of EE 160A: HW1 (Gradescope)\n"
+             "reply yes to delete the copies (undoable), or no to keep them all")
+
+
+async def test_a_reply_to_a_replaced_question_does_not_answer_the_new_one(tmp_path):
+    """Every duplicates question shares its first and last lines. A yes to a line quoted from an older
+    question, since replaced, must not delete the tasks the new question is about (2026-10-04)."""
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    answers = []
+
+    async def handler(payload, approved):
+        answers.append(approved)
+        return "deleted 2 copies"
+
+    session.job_handlers["duplicates"] = handler
+    asked = NOW - timedelta(hours=1)
+    store.propose_job("duplicates", {"digest": "new"}, NEW_DUPES, at=asked)
+    old_sent = NOW - timedelta(days=6)
+
+    out_of_date = ("nothing done: that question was replaced on wed sep 23, 9:00am. "
+                   f"here's the current one, reply yes or no to it:\n\n{NEW_DUPES}")
+    with agent.override(model=FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("chat reply")]))):
+        for quoted in ("reply yes to delete the copies (undoable), or no to keep them all",
+                       "todoist: 2 pairs look like duplicates."):
+            assert await session.handle("yes", reply_to=Reply(quoted, from_juno=True, sent_at=old_sent)) == out_of_date
+        assert await session.handle("no", reply_to=Reply(OLD_DUPES, from_juno=True, sent_at=old_sent)) == out_of_date
+        assert answers == [] and store.pending_job() is not None
+
+        # when Telegram doesn't say when the message was sent, a yes can't be placed: the model asks
+        await session.handle("yes", reply_to=Reply("todoist: 2 pairs look like duplicates.", from_juno=True, sent_at=None))
+        assert answers == []
+
+        # the new question's own message (Telegram's clock a few seconds behind juno's is fine)
+        reply = await session.handle("yes", reply_to=Reply(NEW_DUPES, from_juno=True, sent_at=asked - timedelta(seconds=5)))
+    assert reply == "deleted 2 copies" and answers == [True]
+
+
+async def test_the_model_cannot_approve_a_question_from_a_reply_to_the_one_it_replaced(tmp_path):
+    """More than a bare yes ("yes delete them") goes to the model; answer_proposal is shut for that turn,
+    and for any reply to a message sent before the question was asked."""
+    from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+
+    ops, store, _ = make_ops(tmp_path, SAMPLE)
+    agent = build_agent("test", persona="p")
+    session = ChatSession(agent, ops, store, conversation_id="tg:1")
+    answers = []
+
+    async def handler(payload, approved):
+        answers.append(approved)
+        return "deleted 2 copies"
+
+    session.job_handlers["duplicates"] = handler
+    store.propose_job("duplicates", {"digest": "new"}, NEW_DUPES, at=NOW - timedelta(hours=1))
+
+    def via_tool(messages, info: AgentInfo) -> ModelResponse:
+        ret = next((p for p in messages[-1].parts if isinstance(p, ToolReturnPart)), None)
+        if ret is None:
+            return ModelResponse(parts=[ToolCallPart("answer_proposal", {"approved": True})])
+        return ModelResponse(parts=[TextPart(ret.content)])
+
+    with agent.override(model=FunctionModel(via_tool)):
+        reply = await session.handle("yes delete them", reply_to=Reply(OLD_DUPES, from_juno=True, sent_at=NOW - timedelta(days=6)))
+        assert reply.startswith("not done: she's replying to a message from before this question was asked")
+        brief = Reply("good morning. due today: CME 102: Pset 2", from_juno=True, sent_at=NOW - timedelta(hours=3))
+        assert await session.handle("yes", reply_to=brief) == reply                     # not a question: the model, shut out
+        assert answers == [] and store.pending_job() is not None
+        # the next message isn't a reply to the old one: the model can answer again
+        assert await session.handle("yes go ahead and delete the engr and ee copies") == "deleted 2 copies"
+    assert answers == [True]
 
 
 # -- texts juno sent on its own are part of the conversation ----------------------------------------

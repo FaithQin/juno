@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-04
+- Replies to a replaced question: a Telegram reply answers the waiting proposal only if the replied-to message was
+  sent at or after it was asked (30 s clock slack; no timestamp → the model asks). A yes/no to an older version of the
+  question (it shares a line, like every duplicates question's "reply yes to delete the copies…") gets "nothing done:
+  that question was replaced on …" plus the current question, in code; any other reply to a message from before the
+  question can't call `answer_proposal` that turn. Closes the gap flagged on 2026-10-03 (Sep 28 question → Oct 3 one).
+  Tests first; 305 tests.
+
 ## 2026-10-03 (night, later)
 - Replies: a Telegram reply carries the message she answered (or the part she quoted) into the prompt; replying yes/no
   to a proposal's message answers it however old; every text juno sends on its own (nudges, brief, sync notes,

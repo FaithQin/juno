@@ -24,7 +24,31 @@ after it, and a nudge in between shouldn't change that.
 
 **Replying yes/no to a proposal answers it,** however old. Normally a bare "yes" answers a job's
 proposal only while it is the last thing said (`docs/07-hardening.md` §2). A reply to the
-proposal's own message is unambiguous, so `_replies_to_proposal` answers it directly.
+proposal's own message is unambiguous, so `_proposal_reply` answers it directly.
+
+**…but only the question that is waiting now (fixed 2026-10-04).** A job replaces its own question
+when what it found changes (`Store.proposal_slot` returns "free" for a new digest): the Sep 28
+duplicates question (Breakfast, CME Pset1 work blocks) was replaced on Oct 3 by one about ENGR 40M
+and EE 160A. Questions of one kind share lines: every duplicates question starts "todoist: 2 pairs
+look like duplicates." and ends "reply yes to delete the copies…". Matching on text alone, a yes to
+a line quoted from the *old* message would have deleted the tasks in the *new* one. So the reply
+is placed in time first: Telegram stamps every message (`Reply.sent_at`), and the job's `asked_at`
+says when the waiting question went out (the job stamps it just before sending, so its own
+message is never earlier; `CLOCK_SKEW`, 30 s, covers the two clocks disagreeing).
+
+| her reply is to… | `_proposal_reply` | a bare yes/no | anything else |
+|---|---|---|---|
+| the waiting question's message (shares its text, sent at or after `asked_at`) | `current` | answers it, in code | the model, which may answer it |
+| an older juno message that shares a line with it (an earlier version) | `replaced` | "nothing done: that question was replaced on …", then the current question as its own message, in code | the model, but `answer_proposal` is shut for this turn |
+| any other message from before `asked_at` | `earlier` | the model, `answer_proposal` shut | the model, `answer_proposal` shut |
+| a message with no timestamp | `None` | the model asks | the model |
+
+The out-of-date answer never reaches the model, so it can't be read as a yes to the new question
+(Faith chose this, 2026-10-04). The current question is resent as its own bubble so that replying
+to it lands in the first row. The gate on `answer_proposal` (`_answer_from_model`) is the same idea
+for everything the code can't decide: a reply is about the message it replies to, and a message
+from before the question was asked can't be answering it; the tool tells the model so, and the
+model tells her nothing was done.
 
 ## 2. Sources only when she asks
 
@@ -95,7 +119,7 @@ the list lives. Against her real accounts after this change it finds nothing.
 
 ## Reading the code
 
-1. `chat.py` — `Reply`, `tidy_reply`, `record_sent`, `ChatSession.note_sent / _reply_note / _replies_to_proposal`.
+1. `chat.py` — `Reply`, `tidy_reply`, `record_sent`, `ChatSession.note_sent / _reply_note / _proposal_reply / _out_of_date / _answer_from_model`.
 2. `channels/telegram.py` — `reply_of`. `app.py` — `notify`, `course_kwargs`, `color_scheme`, the class check job.
 3. `colors.py`; `chat_ops.add_event / color_event` and the `color_event` undo.
 4. `tasks.due_task_from`, `reminders.plan_nudges` (the `start` kind), `brief.format_brief`, `jobs.run_brief_job`.
