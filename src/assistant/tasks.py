@@ -65,10 +65,11 @@ def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str],
     Todoist due dates come in three shapes: a date (no time), a naive datetime
     (floating, meaning "in your timezone"), or an aware UTC datetime.
 
-    Planned work vs deadlines (2026-10-03): a task with a Todoist duration or Todoist's own
-    deadline field, or "block" in its title, is planned work; its date is when Faith will do it.
-    A task a sync tracks (`tracked`: Canvas/Gradescope links) is an assignment, so its date is
-    a deadline whatever else it carries.
+    Planned work vs deadlines (2026-10-03), in order:
+      1. Todoist's own deadline field set → planned work: she said where the deadline is, so the
+         due date is when she'll do it (her convention for 42 tasks on 2026-10-03).
+      2. a task a sync tracks (`tracked`: Canvas/Gradescope links) → a deadline, even with a duration.
+      3. a Todoist duration, or "block" in the title → planned work. Anything else → a deadline.
     """
     due = getattr(task, "due", None)
     raw = getattr(due, "date", None) if due is not None else None
@@ -86,10 +87,12 @@ def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str],
         created = datetime.fromisoformat(created.replace("Z", "+00:00"))
 
     minutes, deadline = _minutes(task), _deadline(task)
-    if tracked and task.id in tracked:
+    if deadline:                         # she said where the deadline is, so the due date is her plan
+        kind = "planned"
+    elif tracked and task.id in tracked:  # an assignment a sync keeps: its date is the deadline
         kind = "due"
     else:
-        kind = "planned" if (minutes or deadline or BLOCK_RE.search(task.content or "")) else "due"
+        kind = "planned" if (minutes or BLOCK_RE.search(task.content or "")) else "due"
     return DueTask(
         task_id=task.id,
         content=task.content,

@@ -75,7 +75,7 @@ class GradescopeSync:
         dash, login = await self.browser.html(BASE + "/")
         if login:
             return None
-        by_code = {c.code: c for c in self.courses_cfg.courses}
+        by_code = {c.code: c for c in self.courses_cfg.graded()}      # audited courses: nothing to sync
         matched = match_courses(parse_dashboard(dash), list(by_code))
         course_for = {gs.id: by_code[code] for code, gs in matched.items()}
         items: list[CanvasItem] = []

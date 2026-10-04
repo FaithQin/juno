@@ -12,8 +12,8 @@ todoist:
   project_id: "6cXPJPmRH6GF2MPr"   # "Classes", under Areas
   project_name: "Classes"
 
-# Dropped (removed from the sync): MATSCI 88Q on 2026-09-30, EE 310 on 2026-10-02.
 courses:
+  # Graded classes: synced from Canvas (canvas_id) and Gradescope (matched by code), nudged.
   - code: "ENGR 40M"
     canvas_id: 231533
     project_id: "6hcWWXF2wPQ63xGP"
@@ -24,6 +24,28 @@ courses:
     canvas_id: 232825
     project_id: "6hcWWXGX4RFgHc5C"
   - code: "CS 106B"
-    canvas_id: null          # not on Canvas; assignments come from the course site and Gradescope
+    canvas_id: null          # its Canvas site (232548) is empty; assignments come from Paperless, the site and Gradescope
     website: "https://web.stanford.edu/class/cs106b/"
     project_id: "6hcWWXHRpx3H2RvF"
+  - code: "EE 160A"          # added 2026-10-03; no Canvas, Gradescope or Ed site yet (the class check will say when one appears)
+    project_id: "6hg9Mmh6R7Q68H7M"
+
+  # Audits (Faith, 2026-10-03): juno knows them for chat, Ed and their Todoist projects, but pulls
+  # no assignments from Canvas or Gradescope and sends no nudges. Aliases are cross-listed codes.
+  - code: "EE 227"
+    aliases: ["CS 227A"]     # Robot Perception
+    audit: true
+    project_id: "6hg9Mmj286JqGMgF"
+  - code: "EE 260A"
+    audit: true
+    project_id: "6hg9Mmgm86G5FPJJ"
+  - code: "AA 274A"
+    aliases: ["AA 174A"]     # Principles of Robot Autonomy I; no Todoist project
+    audit: true
+
+# Dropped: juno says so if they come up, and the class check stays quiet about their leftovers.
+dropped:
+  - code: "MATSCI 88Q"
+    dropped_on: 2026-09-30
+  - code: "EE 310"
+    dropped_on: 2026-10-02

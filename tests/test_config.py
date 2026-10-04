@@ -101,6 +101,9 @@ def test_the_repo_courses_yaml_ships_every_course_with_its_sub_project():
         "CME 102": "6hcWWXF7PMmh57v2",
         "EE 100": "6hcWWXGX4RFgHc5C",
         "CS 106B": "6hcWWXHRpx3H2RvF",
+        "EE 160A": "6hg9Mmh6R7Q68H7M",
+        "EE 227": "6hg9Mmj286JqGMgF",
+        "EE 260A": "6hg9Mmgm86G5FPJJ",
     }
     assert {c.code: c.canvas_id for c in cfg.courses}["CS 106B"] is None
     # Dropped courses stay out of the sync: MATSCI 88Q (Sep 30, 2026) and EE 310 (Oct 2, 2026).

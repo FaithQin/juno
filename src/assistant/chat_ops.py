@@ -36,7 +36,8 @@ class ChatOps:
                  sections: dict[str, str], classes_project_id: str, calendar_names: list[str],
                  now: Callable[[], datetime], web=None, browser=None, ed=None,
                  course_projects: dict[str, str] | None = None, colors: ColorScheme | None = None,
-                 audits: list[str] | None = None):
+                 audits: list[str] | None = None, aliases: dict[str, str] | None = None,
+                 dropped: list[tuple[str, date | None]] | None = None):
         self.web = web                        # WebReader, or None when links can't be opened
         self.browser = browser                # BrowserSession, or None when there is no browser
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
@@ -47,6 +48,8 @@ class ChatOps:
         self.answer_job = None                # async (approved) -> str, wired by ChatSession
         self.colors = colors                  # her scheme for events juno adds; None = no automatic colors
         self.audit_codes = set(audits or [])  # courses she audits: no nudges, tagged in the brief
+        self.course_aliases = dict(aliases or {})   # "CS 227A" → "EE 227"
+        self.dropped = list(dropped or [])          # [("MATSCI 88Q", date(2026, 9, 30)), ...]
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -100,6 +103,14 @@ class ChatOps:
     def _courses_list(self) -> str:
         return ", ".join(self.courses)
 
+    def _course(self, text: str) -> str | None:
+        """A course code from her words, aliases included ('cs 227a' → 'EE 227')."""
+        code = normalize_course(text, self.courses)
+        if code:
+            return code
+        alias = normalize_course(text, list(self.course_aliases))
+        return self.course_aliases.get(alias) if alias else None
+
     # ----------------------------------------------------------------------
     # reads
     # ----------------------------------------------------------------------
@@ -142,7 +153,7 @@ class ChatOps:
         today = self._local(now).date()
         code = None
         if course:
-            code = normalize_course(course, self.courses)
+            code = self._course(course)
             if not code:
                 return f"'{course}' isn't one of your courses ({self._courses_list()})"
         tasks = [t for t in self.due_tasks() if not code or t.course == code]
@@ -237,7 +248,7 @@ class ChatOps:
         tokens = title.split()
         for n in (2, 1):
             if len(tokens) >= n:
-                code = normalize_course(" ".join(tokens[:n]), self.courses)
+                code = self._course(" ".join(tokens[:n]))
                 if code:
                     rest = " ".join(tokens[n:]).lstrip(":- ").strip()
                     return code, rest
@@ -247,7 +258,7 @@ class ChatOps:
                  duration: int | None = None, deadline: str | None = None) -> str:
         code = None
         if course:
-            code = normalize_course(course, self.courses)
+            code = self._course(course)
             if not code:
                 return f"'{course}' isn't one of your courses ({self._courses_list()})"
         title = title.strip()
@@ -640,7 +651,7 @@ class ChatOps:
     def ed_announcements(self, course: str, limit: int = 5) -> str:
         from .ed import format_announcements, match_course
 
-        code = normalize_course(course, self.courses)
+        code = self._course(course)
         if not code:
             return f"'{course}' isn't one of your courses ({self._courses_list()})"
         if self.ed is None:
@@ -703,10 +714,20 @@ class ChatOps:
     # ----------------------------------------------------------------------
 
     def context_block(self) -> str:
+        graded = [c for c in self.courses if c not in self.audit_codes]
         lines = [   # nothing here may change minute to minute: the whole block is part of the provider's cached prefix
             f"timezone: {str(self.tz).lower()}",
-            f"courses: {self._courses_list()}",
+            f"courses: {', '.join(graded)}",
         ]
+        if self.audit_codes:
+            also = {}
+            for alias, code in self.course_aliases.items():
+                also.setdefault(code, []).append(alias)
+            audits = [f"{c} (also {', '.join(also[c])})" if c in also else c for c in self.courses if c in self.audit_codes]
+            lines.append(f"auditing (not graded; no nudges or synced assignments): {', '.join(audits)}")
+        if self.dropped:
+            gone = [f"{code} ({on.strftime('%b %-d').lower()})" if on else code for code, on in self.dropped]
+            lines.append(f"dropped: {', '.join(gone)}")
         facts = self.store.facts()
         if facts:
             lines.append("things faith told me to remember:")

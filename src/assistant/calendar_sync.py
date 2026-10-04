@@ -113,7 +113,7 @@ class CalendarSync:
     # -- helpers ----------------------------------------------------------------
 
     def _course_for(self) -> dict[int, Course]:
-        return {c.canvas_id: c for c in self.courses_cfg.courses if c.canvas_id is not None}
+        return self.courses_cfg.by_canvas_id()          # graded courses only; audits never sync
 
     def _target_id(self) -> str:
         ids = self.calendar.calendar_ids()

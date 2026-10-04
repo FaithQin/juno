@@ -27,6 +27,10 @@ gradescope:
 calendar:
   target: Stanford                       # Google calendar that receives Canvas events
   every_minutes: 60
+  colors:                                # juno colors the events it adds (Faith, 2026-10-03); Google's color names
+    class: flamingo                      # classes and sections of graded courses
+    audit: grape                         # audited classes
+    exam: tomato                         # midterms, finals, exams, quizzes
 
 outlook:
   target: Stanford                       # Google calendar that receives confirmed Outlook meetings

@@ -37,3 +37,10 @@ def test_check_still_reports_legacy_sections_for_courses_without_a_project():
     lines = check_report(todoist, cfg([{"code": "CME 102"}, {"code": "EE 100"}]))
     assert "CME 102: section CME 102 in Classes (legacy)" in lines
     assert "sections that will be created on first sync: EE 100" in lines
+
+
+def test_check_says_an_audit_without_a_project_is_fine_not_a_section_to_create():
+    todoist = FakeTodoist([], projects=[("CLASSES", "Classes", None)])
+    lines = check_report(todoist, cfg([{"code": "AA 274A", "aliases": ["AA 174A"], "audit": True}]))
+    assert "AA 274A: audit, no Todoist project (that's fine: juno syncs nothing for it)" in lines
+    assert not any(l.startswith("sections that will be created") for l in lines)

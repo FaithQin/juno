@@ -40,6 +40,9 @@ def test_planned_work_is_told_apart_from_deadlines():
     assert plain.kind == "due"
     tracked = due_task_from(task("G", "CME 102: Pset 2 (Gradescope)", at(8, 23, 59), minutes=90), tz=TZ, sections={}, tracked={"G"})
     assert tracked.kind == "due" and tracked.duration_min == 90                       # a sync's assignment is a deadline
+    planned_assignment = due_task_from(task("P", "ENGR 40M: Lab 1 prelab (Gradescope)", at(4, 11), minutes=90, deadline=date(2026, 10, 5)),
+                                       tz=TZ, sections={}, tracked={"P"})
+    assert (planned_assignment.kind, planned_assignment.deadline) == ("planned", date(2026, 10, 5))   # her deadline field wins
 
 
 def test_words_for_durations_and_deadlines():

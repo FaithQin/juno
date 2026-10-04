@@ -12,6 +12,7 @@ folder just works; on a server set ASSISTANT_HOME to point at it.
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -81,6 +82,8 @@ class Course(BaseModel):
     project_id: str | None = None  # the course's own Todoist sub-project under Classes
     section: str | None = None     # legacy (no project_id): override the section name inside Classes
     website: str | None = None     # public course site to scrape (phase 2)
+    audit: bool = False            # auditing: juno knows it (chat, Ed, its Todoist project) but syncs nothing and never nudges
+    aliases: list[str] = Field(default_factory=list)   # other codes for the same class, e.g. CS 227A for EE 227
 
     @property
     def section_name(self) -> str:
@@ -95,9 +98,28 @@ class TodoistConfig(BaseModel):
     project_name: str = "Classes"
 
 
+class DroppedCourse(BaseModel):
+    """A class she dropped: kept so juno can say so, and so the class check stays quiet about it."""
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    dropped_on: date | None = None   # not `on:`: YAML 1.1 reads a bare `on` key as the boolean true
+
+
 class CoursesConfig(BaseModel):
     todoist: TodoistConfig = Field(default_factory=TodoistConfig)
     courses: list[Course] = Field(default_factory=list)
+    dropped: list[DroppedCourse] = Field(default_factory=list)
+
+    def graded(self) -> list[Course]:
+        return [c for c in self.courses if not c.audit]
+
+    def audits(self) -> list[Course]:
+        return [c for c in self.courses if c.audit]
+
+    def alias_map(self) -> dict[str, str]:
+        """Alias → course code ("CS 227A" → "EE 227")."""
+        return {a: c.code for c in self.courses for a in c.aliases}
 
     @model_validator(mode="after")
     def _distinct_projects(self) -> "CoursesConfig":
@@ -113,7 +135,8 @@ class CoursesConfig(BaseModel):
         return self
 
     def by_canvas_id(self) -> dict[int, Course]:
-        return {c.canvas_id: c for c in self.courses if c.canvas_id is not None}
+        """Courses the Canvas syncs read: graded ones with a Canvas site. Audits never sync."""
+        return {c.canvas_id: c for c in self.courses if c.canvas_id is not None and not c.audit}
 
     def course_projects(self) -> dict[str, str]:
         """Course code → its sub-project id (courses with one)."""
@@ -178,9 +201,19 @@ class GradescopeConfig(BaseModel):
     every_hours: int = 3
 
 
+class EventColorScheme(BaseModel):
+    """Google color names for events juno adds (Faith's scheme, read from her calendar 2026-10-03)."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    klass: str | None = Field("flamingo", alias="class")   # classes and sections of graded courses
+    audit: str | None = "grape"                            # audited classes
+    exam: str | None = "tomato"                            # midterms, finals, exams, quizzes
+
+
 class CalendarSyncConfig(BaseModel):
     target: str = "Stanford"        # Google calendar that receives Canvas events
     every_minutes: int = 60
+    colors: EventColorScheme = Field(default_factory=EventColorScheme)
 
 
 class OutlookConfig(BaseModel):

@@ -146,6 +146,15 @@ def tidy_reply(text: str, *, keep_sources: bool) -> str:
     return text.strip()
 
 
+def record_sent(store: Store, text: str, *, at: datetime, conversation_id: str = "telegram") -> None:
+    """Keep a text juno sent on its own (nudge, brief, sync note, proposal) as one of juno's lines in
+    the conversation's outbox stream, so her answer to it makes sense to the model."""
+    if not text.strip():
+        return
+    message = ModelResponse(parts=[TextPart(text[:2000])], timestamp=at)
+    store.save_messages(f"{conversation_id}:outbox", ModelMessagesTypeAdapter.dump_json([message]), at=at)
+
+
 YES = {"yes", "y", "yep", "yeah", "yea", "ok", "okay", "go", "go ahead", "do it", "sure", "confirm", "👍", "please"}
 NO = {"no", "n", "nope", "stop", "cancel", "don't", "dont", "skip", "nah", "wait"}
 
@@ -206,8 +215,7 @@ class ChatSession:
         """Record a text juno sent on its own (a nudge, the brief, a sync note, a proposal) as one of
         juno's lines, so her answer to it, with or without Telegram's reply, makes sense to the model.
         Kept in its own stream so it doesn't count as chat when deciding whether a proposal is fresh."""
-        message = ModelResponse(parts=[TextPart(text[:2000])], timestamp=at or self.ops.now())
-        self.store.save_messages(self.outbox_id, ModelMessagesTypeAdapter.dump_json([message]), at=at or self.ops.now())
+        record_sent(self.store, text, at=at or self.ops.now(), conversation_id=self.conversation_id)
 
     def _history(self, now):
         history = []

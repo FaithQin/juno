@@ -65,6 +65,8 @@ def check_report(todoist, cfg) -> list[str]:
                 lines.append(f"{c.code}: sub-project {sub.name} ({sub.id}) ok")
         elif c.section_name in sections:
             lines.append(f"{c.code}: section {c.section_name} in {project.name} (legacy)")
+        elif c.audit:   # never synced, so no section is ever made for it
+            lines.append(f"{c.code}: audit, no Todoist project (that's fine: juno syncs nothing for it)")
         else:
             missing_sections.append(c.section_name)
     read_ids = [pid for pid in cfg.class_project_ids(project.id) if pid == project.id or pid in by_id]
@@ -101,6 +103,12 @@ def telegram_notify(settings, text: str) -> bool:
                 await bot.send_message(chat_id, text)
 
     asyncio.run(go())
+    from datetime import datetime, timezone
+
+    from .chat import record_sent
+    from .db import Store
+
+    record_sent(Store(settings.db_path), text, at=datetime.now(timezone.utc))   # her answer to it should make sense to juno
     return True
 
 
@@ -169,7 +177,7 @@ def cmd_nudges(args) -> int:
 
     rt = build_runtime()
     now = now_utc()
-    nudges = plan_nudges(rt.ops.due_tasks(), now=now, tz=rt.settings.tz, sent=rt.store.sent_nudges(), snoozes=rt.store.snoozes())
+    nudges = plan_nudges(rt.ops.nudge_tasks(), now=now, tz=rt.settings.tz, sent=rt.store.sent_nudges(), snoozes=rt.store.snoozes())
     print(format_nudges(nudges, now=now, tz=rt.settings.tz, offline_since=None) or "no nudges due right now")
     return 0
 
@@ -203,6 +211,7 @@ def cmd_gradescope(args) -> int:
         async with Bot(rt.settings.telegram_bot_token) as bot:
             for chat_id in sorted(rt.settings.allowed_chat_ids):
                 await bot.send_message(chat_id, text)
+        rt.session.note_sent(text)              # her answer to it should make sense to juno
 
     send = to_console if args.print or not rt.settings.telegram_bot_token else to_telegram
     job = GradescopeSync(browser=rt.ops.browser, todoist=rt.todoist, store=rt.store, courses_cfg=rt.courses_cfg,
@@ -233,6 +242,7 @@ def cmd_calendar(args) -> int:
         async with Bot(rt.settings.telegram_bot_token) as bot:
             for chat_id in sorted(rt.settings.allowed_chat_ids):
                 await bot.send_message(chat_id, text)
+        rt.session.note_sent(text)              # her answer to it should make sense to juno
 
     send = to_console if args.print or not rt.settings.telegram_bot_token else to_telegram
     job = build_calendar_sync(rt, send)
@@ -355,6 +365,7 @@ def cmd_outlook(args) -> int:
         async with Bot(rt.settings.telegram_bot_token) as bot:
             for chat_id in sorted(rt.settings.allowed_chat_ids):
                 await bot.send_message(chat_id, text)
+        rt.session.note_sent(text)              # her answer to it should make sense to juno
 
     send = to_console if args.print or not rt.settings.telegram_bot_token else to_telegram
     job = build_outlook_sync(rt, send)

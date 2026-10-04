@@ -51,3 +51,10 @@ def test_outlook_job_runs_every_ten_minutes_by_default():
     sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, outlook=noop)
     jobs = {j.id: j for j in sched.get_jobs()}
     assert jobs["outlook"].trigger.interval.total_seconds() == 600
+
+
+def test_the_class_check_runs_every_morning():
+    cfg = AppConfig()
+    sched = build_scheduler(cfg, ZoneInfo("America/Los_Angeles"), sync=noop, nudges=noop, brief=noop, course_watch=noop)
+    job = {j.id: j for j in sched.get_jobs()}["course_watch"]
+    assert isinstance(job.trigger, CronTrigger) and "hour='9'" in str(job.trigger) and "minute='30'" in str(job.trigger)

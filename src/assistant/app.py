@@ -27,6 +27,9 @@ from .gcal import GoogleCalendar
 from .gradescope_sync import JOB_KIND as GRADESCOPE_JOB, MATCH_KIND as GRADESCOPE_MATCH_JOB, GradescopeSync
 from .calendar_sync import JOB_KIND as CALENDAR_JOB, CalendarSync, canvas_events_from_api
 from .jobs import run_brief_job, run_nudges_job, run_sync_job
+from .chat import record_sent
+from .colors import ColorScheme
+from .course_watch import CourseWatch
 from .duplicates import JOB_KIND as DUPLICATES_JOB, DuplicateCheck
 from .outlook_sync import JOB_KIND as OUTLOOK_JOB, OutlookSync
 from .status import describe_runtime
@@ -65,10 +68,28 @@ def _ed_client(settings: Settings) -> EdClient | None:
     return EdClient(token, scheme="x-token") if token else None
 
 
+def course_kwargs(courses_cfg: CoursesConfig) -> dict:
+    """What ChatOps needs to know about her classes: every code it should recognise, which are
+    audits, the aliases, and the dropped ones (so juno can say she dropped them)."""
+    return {
+        "courses": [c.code for c in courses_cfg.courses],
+        "audits": [c.code for c in courses_cfg.audits()],
+        "aliases": courses_cfg.alias_map(),
+        "dropped": [(d.code, d.dropped_on) for d in courses_cfg.dropped],
+    }
+
+
+def color_scheme(app_cfg: AppConfig, courses_cfg: CoursesConfig) -> ColorScheme:
+    colors = app_cfg.calendar.colors
+    return ColorScheme(klass=colors.klass, audit=colors.audit, exam=colors.exam,
+                       courses=[code for c in courses_cfg.graded() for code in [c.code, *c.aliases]],
+                       audits=[code for c in courses_cfg.audits() for code in [c.code, *c.aliases]])
+
+
 def build_calendar_sync(rt: "Runtime", send) -> CalendarSync:
     from canvasapi import Canvas
 
-    codes = [f"course_{c.canvas_id}" for c in rt.courses_cfg.courses if c.canvas_id]
+    codes = [f"course_{cid}" for cid in rt.courses_cfg.by_canvas_id()]          # graded courses on Canvas
 
     def fetch_events(start: datetime, end: datetime):
         api = Canvas(rt.settings.canvas_url, rt.settings.canvas_token)
@@ -123,7 +144,8 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
 
     ops = ChatOps(
         store=store, todoist=todoist, calendar=calendar, tz=settings.tz,
-        courses=[c.code for c in courses_cfg.courses], sections=courses_cfg.course_sections(sections),
+        **course_kwargs(courses_cfg), colors=color_scheme(app_cfg, courses_cfg),
+        sections=courses_cfg.course_sections(sections),
         course_projects=courses_cfg.course_projects(),
         classes_project_id=project.id, calendar_names=app_cfg.brief.calendars, now=now_utc,
         web=WebReader(canvas_url=settings.canvas_url, canvas_token=settings.canvas_token),
@@ -181,25 +203,32 @@ async def serve(rt: Runtime) -> None:
 
     channel = TelegramChannel(rt.settings.telegram_bot_token, rt.settings.allowed_chat_ids, rt.session.handle,
                               status=status_text)
+
+    async def notify(text: str) -> None:
+        """Every text juno sends on its own goes out here, and is kept in the conversation so that
+        her answer to it ("done", "push it to sunday", a Telegram reply) makes sense to the model."""
+        await channel.send(text)
+        rt.session.note_sent(text)
     if not rt.settings.allowed_chat_ids:
         log.warning("TELEGRAM_CHAT_IDS is empty: setup mode. Send /start to the bot to learn your chat id.")
 
-    duplicates = DuplicateCheck(todoist=rt.todoist, store=rt.store, courses=[c.code for c in rt.courses_cfg.courses],
-                                tz=rt.settings.tz, send=channel.send, now=now_utc)
+    duplicates = DuplicateCheck(todoist=rt.todoist, store=rt.store,
+                                courses=[code for c in rt.courses_cfg.courses for code in [c.code, *c.aliases]],
+                                tz=rt.settings.tz, send=notify, now=now_utc)
     rt.session.job_handlers[DUPLICATES_JOB] = duplicates.approve
 
     async def sync_job():
-        await run_sync_job(run=lambda: run_sync(rt.settings, rt.courses_cfg), send=channel.send)
+        await run_sync_job(run=lambda: run_sync(rt.settings, rt.courses_cfg), send=notify)
         try:
             await duplicates.run()             # right after a sync is when a twin would have appeared
         except Exception:
             log.exception("duplicate check failed")
 
     async def nudges_job():
-        await run_nudges_job(rt.ops, rt.store, send=channel.send)
+        await run_nudges_job(rt.ops, rt.store, send=notify)
 
     async def brief_job():
-        await run_brief_job(rt.ops, send=channel.send)
+        await run_brief_job(rt.ops, send=notify)
 
     async def browser_idle_job():
         if rt.ops.browser is not None and await rt.ops.browser.close_idle(600):
@@ -207,7 +236,7 @@ async def serve(rt: Runtime) -> None:
 
     gradescope = GradescopeSync(
         browser=rt.ops.browser, todoist=rt.todoist, store=rt.store, courses_cfg=rt.courses_cfg,
-        project_id=rt.project_id, sections=rt.sections, tz=rt.settings.tz, send=channel.send, now=now_utc,
+        project_id=rt.project_id, sections=rt.sections, tz=rt.settings.tz, send=notify, now=now_utc,
         complete_when_submitted=rt.settings.complete_when_submitted,
     )
     rt.session.job_handlers[GRADESCOPE_JOB] = gradescope.approve   # a yes/no in chat answers its proposal
@@ -225,7 +254,7 @@ async def serve(rt: Runtime) -> None:
     rt.ops.sync_gradescope = lambda: asyncio.run_coroutine_threadsafe(gradescope.run(quiet=True), loop).result(timeout=300)
     rt.ops.check_duplicates = lambda: asyncio.run_coroutine_threadsafe(duplicates.run(quiet=True), loop).result(timeout=120)
 
-    calendar_sync = build_calendar_sync(rt, channel.send)
+    calendar_sync = build_calendar_sync(rt, notify)
     rt.session.job_handlers[CALENDAR_JOB] = calendar_sync.approve
 
     async def calendar_job():
@@ -234,7 +263,7 @@ async def serve(rt: Runtime) -> None:
         except Exception:
             log.exception("calendar sync failed")
 
-    outlook = build_outlook_sync(rt, channel.send)
+    outlook = build_outlook_sync(rt, notify)
     outlook_job = None
     if outlook is not None:
         rt.session.job_handlers[OUTLOOK_JOB] = outlook.approve
@@ -248,9 +277,21 @@ async def serve(rt: Runtime) -> None:
     else:
         log.info("OUTLOOK_ICS_URL is empty: outlook → google calendar is off")
 
+    from .canvas_client import CanvasClient
+
+    watch = CourseWatch(fetch_canvas=lambda: CanvasClient(rt.settings.canvas_url, rt.settings.canvas_token).active_courses(),
+                        fetch_projects=rt.todoist.projects, courses_cfg=rt.courses_cfg, parent_id=rt.project_id,
+                        store=rt.store, send=notify)
+
+    async def course_watch_job():
+        try:
+            await watch.run()
+        except Exception:
+            log.exception("class check failed")
+
     sched = build_scheduler(rt.app_cfg, rt.settings.tz, sync=sync_job, nudges=nudges_job, brief=brief_job,
                             browser_idle=browser_idle_job, gradescope=gradescope_job, calendar=calendar_job,
-                            outlook=outlook_job)
+                            outlook=outlook_job, course_watch=course_watch_job)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
