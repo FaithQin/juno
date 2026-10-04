@@ -1,9 +1,9 @@
-# Handoff — state as of 2026-10-03 (~22:30 PDT, after replies, colors, planned work and the class changes)
+# Handoff — state as of 2026-10-04 (~10:50 PDT, after the reply-to-a-replaced-question fix)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
 
-## What is live (verified on the server; last deploy `d59c991`, 2026-10-03 22:17 PDT)
+## What is live (verified on the server; last deploy `05d654c`, 2026-10-04 10:39 PDT)
 | Piece | Cadence | Notes |
 |---|---|---|
 | Canvas → Todoist sync | hourly | adopted 52 hand-made tasks on 2026-09-22; batches same-day quizzes; retries transient errors |
@@ -12,7 +12,7 @@ what to do next. **Update it at the end of every working session.**
 | Canvas events → Stanford calendar | hourly | first-run proposal **re-asked once** at the next run (see Pending) |
 | Nudges: 8pm the evening before, 2h before | scan every 10 min | late ones say "i was offline"; a Todoist blip skips one scan quietly. **Planned work** (a Todoist deadline field, a duration, or "block" in the title) gets **one heads-up 10 min before a timed start** instead ("starting 3:00pm: … (1h · deadline thu)"). **Audited classes get none.** |
 | Morning brief | 07:00 daily | every dated Todoist task + calendars Stanford/TA/primary/StartX/Cal.com; waits ~10 min through a Todoist outage, then says so. Sections: **due today** (incl. planned work whose Todoist deadline is today) / **planned today** / due tomorrow / overdue ("planned fri" for missed plans); audit tasks tagged "(audit)" |
-| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it; every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks; `color_event` and `add_event(color=)` with her scheme applied automatically |
+| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it, **only if that message was sent after the waiting question was asked** (a reply to an older, replaced question gets "nothing done: that question was replaced on …" + the current one, in code; 2026-10-04); every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks; `color_event` and `add_event(color=)` with her scheme applied automatically |
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-10-02), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`; new items (incl. tentative invites) proposed, yes copies with all details; `sync_now("outlook")`; `assistant outlook --print` |
@@ -60,9 +60,12 @@ what to do next. **Update it at the end of every working session.**
   Both pairs appeared within minutes of each other on Oct 3 ~21:30–21:42 PDT, while someone was editing these tasks
   (likely Faith or another assistant), so she may already be mid-cleanup. Outlook and Gradescope-match questions still
   queue behind this one until she answers.
-  **Known gap (flagged as its own task):** `_replies_to_proposal` matches a quoted line against the *current* question,
-  and every duplicates question shares its first and last lines; a "yes" to a partial quote of the old Sep 28 message
-  could approve this new one. Fix: require the replied-to message's `sent_at` ≥ the job's `asked_at`.
+  **The reply gap is closed (2026-10-04, `05d654c`):** a Telegram reply answers the waiting question only if the
+  replied-to message was sent at or after its `asked_at` (30 s clock slack). A yes/no to the old Sep 28 message (or a
+  quoted line of it) now gets "nothing done: that question was replaced on sat oct 3, 11:17pm" plus the current
+  question as its own message; any other reply to a message from before the question can't call `answer_proposal`.
+  Deployed 10:39 PDT: container up, 8 jobs scheduled, no errors; the duplicates question above is still pending
+  (`asked_at` 06:17:12Z), so her answer to it (a reply to that message, or a bare yes/no) works as before.
 - **Verify on the next proactive text** (e.g. the 07:00 brief on Sun Oct 4): rows appear in `messages` with
   `conversation_id = 'telegram:outbox'`, and a reply to that text in Telegram arrives as "(replying to your message from …)".
   Both are covered by tests; neither has happened live yet. First planned-work heads-up expected Sun Oct 4 10:50am
@@ -95,6 +98,10 @@ what to do next. **Update it at the end of every working session.**
   Copies `data/browser/*.json` if present, **with `--update` since 2026-10-03**: juno rewrites the server's
   `gradescope.json` as it browses, so the Mac copy is usually older and must not replace it.
   `data/assistant.sqlite3` on the server is the source of truth (links, nudge ledger, history, facts, usage counters).
+  The host has no `sqlite3` CLI: read the database with `docker compose exec -T juno python -c "import sqlite3; …"`.
+- Deploy hiccup 2026-10-04: the first `deploy.sh` run hung >10 min in the code rsync (ssh connected, the remote rsync
+  never started, nothing changed on the server). Killed and re-run, it finished in ~30 s. If it happens again, check
+  `ps` on the server for `rsync --server`; none means it's safe to kill and retry.
 - Secrets: Mac `.env` and server `/opt/juno/.env` only. Keys present: Canvas, Todoist, OpenAI, Telegram
   token + chat id. Google OAuth client at `data/google_credentials.json`, token at `data/google_token.json`
   (scopes: calendar read + events write). Ed uses the session token inside `data/browser/ed.json`.
