@@ -44,9 +44,10 @@ what to do next. **Update it at the end of every working session.**
 - Details and reasoning: `docs/07-hardening.md`; decisions: `DECISIONS.md` (2026-09-24 night).
 
 ## Pending right now
-- **Duplicates question for Faith (expected 2026-10-03 ~23:03 PDT, the first hourly check after the deploy).** The deployed
-  rule finds exactly two pairs among her 280 active tasks (read-only check), and that question replaces the stale Sep 28
-  one (Breakfast / CME Pset1 work blocks, all 6 tasks done). Both are pairs she chose to be asked about:
+- **Duplicates question for Faith, sent 2026-10-03 23:17 PDT** by the first hourly check on the narrowed rule (verified
+  on the server: `pending_job` asked_at 2026-10-04T06:17:12Z, no errors in the log). It **replaced the stale Sep 28
+  question** (Breakfast / CME Pset1 work blocks, all 6 tasks done; nothing deleted). The rule finds exactly these two
+  pairs among her 280 active tasks (read-only check), both of a kind she chose to be asked about:
   - "ENGR 40M: Lab 1 prelab (Gradescope)" (hers, with notes, due Sun Oct 4 11am) as a copy of "ENGR 40M: Prelab 1
     (Gradescope)" (made 2026-10-03 17:28 PDT by a sync, linked to Gradescope 8769171, not adopted, due Mon Oct 5 6pm). Yes
     keeps the linked one and moves her notes onto it; her Sunday 11am date is lost (the kept task keeps Mon 6pm).
@@ -59,6 +60,9 @@ what to do next. **Update it at the end of every working session.**
   Both pairs appeared within minutes of each other on Oct 3 ~21:30–21:42 PDT, while someone was editing these tasks
   (likely Faith or another assistant), so she may already be mid-cleanup. Outlook and Gradescope-match questions still
   queue behind this one until she answers.
+  **Known gap (flagged as its own task):** `_replies_to_proposal` matches a quoted line against the *current* question,
+  and every duplicates question shares its first and last lines; a "yes" to a partial quote of the old Sep 28 message
+  could approve this new one. Fix: require the replied-to message's `sent_at` ≥ the job's `asked_at`.
 - **Verify on the next proactive text** (e.g. the 07:00 brief on Sun Oct 4): rows appear in `messages` with
   `conversation_id = 'telegram:outbox'`, and a reply to that text in Telegram arrives as "(replying to your message from …)".
   Both are covered by tests; neither has happened live yet. First planned-work heads-up expected Sun Oct 4 10:50am
