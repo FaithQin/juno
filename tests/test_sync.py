@@ -231,6 +231,21 @@ def test_apply_marks_done_quizzes_in_the_description():
     assert "progress 1:" in format_report(report)
 
 
+def test_a_dry_run_names_the_batch_by_its_title_not_its_id(tmp_path):
+    from assistant.db import Store
+    from assistant.sync import apply_plan
+    from fakes import FakeTask, FakeTodoist
+
+    items, links, tasks = _linked_batch([False, True, False])
+    desc = "Canvas quizzes due Fri 11:59pm:\n" + "\n".join(f"- [{it.name}]({it.html_url})" for it in items)
+    todoist = FakeTodoist([FakeTask("T1", "ENGR 40M quizzes 2–4", None, 1, "S1", description=desc)])
+    plan = plan_sync(items, COURSES, links, tasks, tz=TZ)
+    report = apply_plan(plan, todoist=todoist, store=Store(tmp_path / "t.sqlite3"), project_id="CLASSES", sections={},
+                        tz=TZ, dry_run=True)
+    assert report.progress == ["ENGR 40M quizzes 2–4: 1/3 done (3. Quiz 3)"]
+    assert todoist.get_task("T1").description == desc                            # dry run: nothing written
+
+
 def test_adopt_same_title_links_an_item_to_the_task_the_other_sync_made():
     """The Canvas sync and the Gradescope sync each know one side of a Gradescope-linked assignment.
     An exact title match (course code and source suffix stripped) makes them share one task."""

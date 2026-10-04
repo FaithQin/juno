@@ -67,6 +67,17 @@ def test_normalize_title_ignores_course_prefix_source_suffix_case_and_punctuatio
     assert normalize_title("Send the lab emails", courses=COURSES) == "sendthelabemails"
 
 
+def test_assignment_named_is_the_assignment_however_it_is_worded_and_nothing_more():
+    from assistant.duplicates import assignment_named
+
+    prelab = ((("1",), frozenset({"pre", "lab"})))
+    assert assignment_named("ENGR 40M: Lab 1 prelab (Gradescope)", courses=COURSES) == prelab
+    assert assignment_named("Prelab 1", courses=COURSES) == prelab
+    assert assignment_named("EE 160A: HW1 (due Fri Oct 9, week 3)", courses=COURSES) == (("1",), frozenset({"pset"}))
+    assert assignment_named("CME 102 Pset1: work block (Tue night)", courses=COURSES) is None    # a step towards Pset1
+    assert assignment_named("Breakfast", courses=COURSES) is None                               # no number, no guess
+
+
 def test_find_duplicates_groups_same_title_in_one_project_and_keeps_the_canvas_linked_task(tmp_path):
     store = Store(tmp_path / "t.sqlite3")
     link_all(store)
@@ -80,11 +91,59 @@ def test_find_duplicates_groups_same_title_in_one_project_and_keeps_the_canvas_l
 def test_find_duplicates_prefers_the_older_task_otherwise_and_also_matches_on_shared_links():
     older = FakeTask("A", "Read chapter 3", FakeDue(date(2026, 9, 30)), project_id="P", created_at=made(20))
     newer = FakeTask("B", "read chapter 3!", FakeDue(date(2026, 9, 30)), project_id="P", created_at=made(22))
-    l1 = FakeTask("L1", "Lab 0 prelab", project_id="P", created_at=made(20), description="https://www.gradescope.com/courses/1/assignments/5")
-    l2 = FakeTask("L2", "ENGR 40M: Lab 0 prelab (Gradescope), redo", project_id="P", created_at=made(21),
-                  description="see https://www.gradescope.com/courses/1/assignments/5")
+    l1 = FakeTask("L1", "Lab 0 prelab", FakeDue(date(2026, 9, 21)), project_id="P", created_at=made(20),
+                  description="https://www.gradescope.com/courses/1/assignments/5")
+    l2 = FakeTask("L2", "ENGR 40M: Lab 0 prelab (Gradescope)", FakeDue(date(2026, 9, 28)), project_id="P", created_at=made(21),
+                  description="see https://www.gradescope.com/courses/1/assignments/5")   # a week apart: only the link joins them
     groups = find_duplicates([newer, older, l2, l1], links={}, courses=COURSES)
     assert sorted((g.keep.id, [t.id for t in g.extras]) for g in groups) == [("A", ["B"]), ("L1", ["L2"])]
+
+
+# --- the 2026-09-28 false positives -------------------------------------------------------------
+
+def test_a_daily_habit_one_day_apart_at_the_same_time_is_a_series_not_a_copy():
+    tue = FakeTask("B1", "Breakfast", FakeDue(datetime(2026, 9, 29, 8, 15)), project_id="P-LIFE", created_at=made(27))
+    wed = FakeTask("B2", "Breakfast", FakeDue(datetime(2026, 9, 30, 8, 15)), project_id="P-LIFE", created_at=made(27))
+    assert find_duplicates([tue, wed], links={}, courses=COURSES) == []
+    # still copies: a day apart at different times (11:59pm vs 12:00am drift), or one without a time
+    late = FakeTask("Q1", "Pset 2", FakeDue(datetime(2026, 10, 1, 23, 59)), project_id="P", created_at=made(20))
+    early = FakeTask("Q2", "Pset 2", FakeDue(datetime(2026, 10, 2, 0, 0)), project_id="P", created_at=made(21))
+    dateonly = FakeTask("Q3", "Pset 2", FakeDue(date(2026, 10, 2)), project_id="P", created_at=made(22))
+    groups = find_duplicates([late, early, dateonly], links={}, courses=COURSES)
+    assert [(g.keep.id, [t.id for t in g.extras]) for g in groups] == [("Q1", ["Q2", "Q3"])]
+
+
+def test_her_work_blocks_that_carry_the_assignment_link_are_not_copies_of_the_assignment(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    store.link("gradescope", 77, 5, "GS", adopted=False, name="Pset1", due_at=None, submitted=False)
+    link = "[Pset1](https://www.gradescope.com/courses/5/assignments/77)"
+    pset = FakeTask("GS", "CME 102: Pset1 (Gradescope)", FakeDue(utc(2026, 10, 2, 6, 59)), project_id="P-CME",
+                    created_at=made(23), description=f"Gradescope assignment on {link}")
+    blocks = [FakeTask("W1", "CME 102 Pset1: work block (Tue night)", FakeDue(datetime(2026, 9, 29, 20, 0)), project_id="P-CME",
+                       created_at=made(27), description=link),
+              FakeTask("W2", "CME 102 Pset1: work block (Wed AM)", FakeDue(datetime(2026, 9, 30, 9, 0)), project_id="P-CME",
+                       created_at=made(27), description=link),
+              FakeTask("W3", "CME 102 Pset1: finish + submit", FakeDue(datetime(2026, 10, 1, 19, 0)), project_id="P-CME",
+                       created_at=made(27), description=f"submit at {link}")]
+    assert find_duplicates([pset, *blocks], links=store.links(), courses=COURSES) == []
+
+
+def test_her_own_task_for_the_same_assignment_under_a_reworded_name_is_a_copy(tmp_path):
+    """The two pairs in her Todoist on 2026-10-03: the same link, the same work, worded differently."""
+    store = Store(tmp_path / "t.sqlite3")
+    store.link("gradescope", 8769171, 1395437, "GS", adopted=False, name="Prelab 1", due_at=None, submitted=False)
+    prelab = "[Gradescope](https://www.gradescope.com/courses/1395437/assignments/8769171)"
+    hw = "https://www.gradescope.com/courses/1/assignments/8743688"
+    tasks = [FakeTask("GS", "ENGR 40M: Prelab 1 (Gradescope)", FakeDue(utc(2026, 10, 6, 1, 0)), project_id="P-ENGR",
+                      created_at=made(30), description=f"Gradescope assignment on {prelab}"),
+             FakeTask("HERS", "ENGR 40M: Lab 1 prelab (Gradescope)", FakeDue(datetime(2026, 10, 4, 11, 0)), project_id="P-ENGR",
+                      created_at=made(24), description=f"Due Mon Oct 5, 6:00 PM. No late prelabs. {prelab}"),
+             FakeTask("HW", "EE 160A: HW1 (Gradescope)", FakeDue(datetime(2026, 10, 9, 23, 59)), project_id="P-EE160",
+                      created_at=made(25), description=f"Aim to submit Thu Oct 8. {hw}"),
+             FakeTask("HW2", "EE 160A: HW1 (due Fri Oct 9, week 3)", project_id="P-EE160",
+                      created_at=made(30), description=f"Don't start before Tue. {hw}")]
+    groups = find_duplicates(tasks, links=store.links(), courses=COURSES)
+    assert [(g.keep.id, [t.id for t in g.extras]) for g in groups] == [("HW", ["HW2"]), ("GS", ["HERS"])]
 
 
 class Outbox:
@@ -152,6 +211,22 @@ async def test_quiet_run_answers_chat_and_waits_behind_another_proposal(tmp_path
     text = await check2.run(quiet=True)
     assert text.startswith("todoist: 1 pair looks like duplicates.") and out2.sent == []
     assert store2.pending_job()["kind"] == "duplicates"
+
+
+async def test_a_question_about_tasks_that_are_gone_withdraws_itself_and_frees_the_queue(tmp_path):
+    a = FakeTask("A", "Read chapter 3", FakeDue(date(2026, 9, 30)), project_id="P-MATSCI", created_at=made(20))
+    b = FakeTask("B", "read chapter 3!", FakeDue(date(2026, 9, 30)), project_id="P-MATSCI", created_at=made(22))
+    check, store, todoist, out = make_check(tmp_path, [a, b])
+    await check.run()
+    assert store.pending_job()["kind"] == "duplicates"
+    todoist.complete_task("A")                                                   # she ticked one, deleted the other
+    todoist.delete_task("B")
+    assert await check.run() == "todoist: no need to answer my duplicates question, it's out of date (nothing was deleted)"
+    assert out.sent[-1] == "todoist: no need to answer my duplicates question, it's out of date (nothing was deleted)"
+    assert store.pending_job() is None
+    assert store.proposal_slot("outlook_new", "d1") == "free"                    # the next job's question can go out
+    assert await check.run() is None and len(out.sent) == 2                       # said once
+    assert await check.run(quiet=True) == "todoist: no duplicate tasks"
 
 
 # --- the MATSCI 88Q triples: hand-made, Gradescope-made, Canvas-made (2026-09-24 audit) --------

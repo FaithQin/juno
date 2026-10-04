@@ -558,10 +558,9 @@ def apply_plan(plan: Plan, *, todoist, store: Store, project_id: str, sections: 
     for pr in plan.progress:
         names = ", ".join(it.name for it in pr.newly_done)
         try:
-            content = pr.task_id
+            current = todoist.get_task(pr.task_id)        # a read, so a dry run can name the task too
+            content = current.content
             if not dry_run:
-                current = todoist.get_task(pr.task_id)
-                content = current.content
                 desc = mark_done_lines(current.description or "", [it.html_url for it in pr.items if it.submitted])
                 if desc != (current.description or ""):
                     todoist.update_task(pr.task_id, description=desc)

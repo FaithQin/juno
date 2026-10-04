@@ -6,11 +6,16 @@ before they learned to share one (see `sync.adopt_same_title`). This check runs 
 Canvas sync and on demand from chat ("check for duplicates").
 
 "Duplicate" is deliberately narrow. Two active tasks are copies when they sit in the same project
-and either their titles are the same once the course code, a source suffix like "(Gradescope)",
-case and punctuation are ignored, with due dates no more than a day apart (a weekly "reading"
-task a week apart is a series, not a copy), or their descriptions point at the same Canvas or
-Gradescope assignment, or they are linked to the two halves of one assignment (a Canvas external
-tool that opens a Gradescope assignment, by id; see twins.py). The kept task is the one a sync
+and their titles are the same once the course code, a source suffix like "(Gradescope)", case and
+punctuation are ignored, with due dates no more than a day apart (a weekly "reading" task a week
+apart is a series, not a copy, and so is "Breakfast" at 8:15am on two days); or, in any project,
+their descriptions point at the same Canvas or Gradescope assignment and their titles are that same,
+or both are just the assignment's name worded differently (`assignment_named`: "Lab 1 prelab" =
+"Prelab 1"; her "Pset1: work block" tasks carry the link too, but say more than the assignment, so
+they are steps, not copies); or they are linked to the two halves of one assignment (a Canvas
+external tool that opens a Gradescope assignment, by id; see twins.py). A question whose copies are
+no longer found (done, deleted, or no longer alike) is withdrawn, so it can't hold up the queue.
+The kept task is the one a sync
 tracks (a Canvas link, then a Gradescope link, then the Canvas half of a Gradescope assignment,
 which only ticks once grades flow back), else the older one. The copies are deleted only after
 Faith says yes, each with an undo snapshot; notes she wrote on a copy are added to the kept task
@@ -30,6 +35,7 @@ from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from .db import ItemLink, Store
+from .matching import signature
 from .sync import links_in
 from .twins import load_twins
 
@@ -41,6 +47,8 @@ LINK_SCORE = {"assignment": 3, "quiz": 3, "gradescope": 2}
 TWIN_SCORE = 1                     # the Canvas half of a Gradescope assignment: Canvas sees no submission, only grades
 LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)|https?://\S+")
 GENERATED_RE = re.compile(r"^[A-Z][\w ]* on \[(?:Canvas|Gradescope)\]\(\S+\)$")
+BRACKETS_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]")
+COURSE_CODE_RE = re.compile(r"^\s*[A-Z]{2,10}\s?\d{1,3}[A-Z]{0,2}\s*:")   # "EE 160A:", a course no sync follows
 log = logging.getLogger(__name__)
 
 
@@ -57,20 +65,42 @@ def normalize_title(content: str, *, courses: list[str]) -> str:
     return body
 
 
+def assignment_named(content: str, *, courses: list[str]) -> tuple | None:
+    """The assignment a name is just the name of, however it is worded: (numbers, assignment words),
+    with the course code and anything in brackets dropped. 'ENGR 40M: Lab 1 prelab (Gradescope)'
+    and 'Prelab 1' are both (1, {pre, lab}). 'CME 102 Pset1: work block (Tue night)' says more than
+    the assignment, so it is a step towards Pset1 and gets None; so does a name with no number
+    (no number, no guess, as in matching.py)."""
+    code = next((c for c in sorted(courses, key=len, reverse=True) if _squash(content).startswith(_squash(c))), "")
+    text = BRACKETS_RE.sub(" ", content)
+    sig = signature(text if code else COURSE_CODE_RE.sub(" ", text), code)
+    return (sig.numbers, sig.kinds) if sig.numbers and not sig.words else None
+
+
 def _due(task):
     return getattr(getattr(task, "due", None), "date", None)
 
 
-def _due_day(task, tz: ZoneInfo) -> date | None:
+def _local(task, tz: ZoneInfo) -> datetime | None:
     raw = _due(task)
     if isinstance(raw, datetime):
-        return (raw if raw.tzinfo else raw.replace(tzinfo=tz)).astimezone(tz).date()
-    return raw
+        return (raw if raw.tzinfo else raw.replace(tzinfo=tz)).astimezone(tz)
+    return None
+
+
+def _due_day(task, tz: ZoneInfo) -> date | None:
+    at = _local(task, tz)
+    return at.date() if at is not None else _due(task)
 
 
 def _close_enough(a, b, tz: ZoneInfo) -> bool:
     da, db = _due_day(a, tz), _due_day(b, tz)
-    return da is None or db is None or abs(da - db) <= timedelta(days=1)
+    if da is None or db is None:
+        return True
+    ta, tb = _local(a, tz), _local(b, tz)
+    if da != db and ta is not None and tb is not None and ta.time() == tb.time():
+        return False                                   # same clock time on another day: a daily habit, not a copy
+    return abs(da - db) <= timedelta(days=1)
 
 
 def hand_written(description: str | None) -> bool:
@@ -119,15 +149,19 @@ def find_duplicates(tasks, *, links: dict[tuple[str, int], ItemLink], courses: l
 
     by_link: dict[tuple[str, int], list] = {}
     by_title: dict[tuple[str, str], list] = {}
+    norm: dict[str, str] = {}
     for t in tasks:
         for key in links_in(getattr(t, "description", None)):
             by_link.setdefault(key, []).append(t)
-        norm = normalize_title(t.content, courses=courses)
-        if len(norm) >= 3:
-            by_title.setdefault((getattr(t, "project_id", None), norm), []).append(t)
-    for group in by_link.values():                    # the same assignment link: copies whatever the dates
-        for other in group[1:]:
-            union(group[0].id, other.id)
+        norm[t.id] = normalize_title(t.content, courses=courses)
+        if len(norm[t.id]) >= 3:
+            by_title.setdefault((getattr(t, "project_id", None), norm[t.id]), []).append(t)
+    for group in by_link.values():                    # the same assignment link and the same name: copies whatever the
+        named = {t.id: assignment_named(t.content, courses=courses) for t in group}   # dates (her work blocks carry
+        for i, a in enumerate(group):                 # the link too, but under longer names)
+            for b in group[i + 1:]:
+                if norm[a.id] == norm[b.id] or named[a.id] is not None and named[a.id] == named[b.id]:
+                    union(a.id, b.id)
     for group in by_title.values():                   # the same title: copies unless they are a series
         for i, a in enumerate(group):
             for b in group[i + 1:]:
@@ -232,6 +266,13 @@ class DuplicateCheck:
                                              twins=load_twins(self.store))
                   if g.fingerprint not in declined]
         if not groups:
+            job = self.store.pending_job()
+            if job is not None and job["kind"] == JOB_KIND:   # its tasks are done, gone, or no longer look alike
+                self.store.kv_delete("pending_job")
+                text = "todoist: no need to answer my duplicates question, it's out of date (nothing was deleted)"
+                if not quiet:
+                    await self.send(text)
+                return text
             return "todoist: no duplicate tasks" if quiet else None
         digest = hashlib.sha1(";".join(g.fingerprint for g in groups).encode()).hexdigest()
         slot = self.store.proposal_slot(JOB_KIND, digest)

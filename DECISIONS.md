@@ -227,3 +227,17 @@ From the homework audit that night (Faith's instructions, marked; the rest **def
 | Which copy the duplicate check keeps | **the task linked to the source that ticks on submission** (Faith): a Gradescope link outranks the Canvas half of a Gradescope assignment; a plain Canvas link still outranks both (mine) |
 | Notes on a deleted copy | **carried over to the kept task** (Faith), logged so undo can take them back (mine) |
 | Faith's existing duplicates | **not deleted by the agent**; listed and proposed, she decides (Faith) |
+
+## Duplicates, narrowed after a wrong question (2026-10-03)
+
+The Sep 28 duplicates question was wrong (her "Breakfast" on Tue and Wed at 8:15am; her three "CME 102 Pset1: work
+block / finish + submit" tasks as copies of "CME 102: Pset1 (Gradescope)" because they carried its link), and it
+blocked every other question for five days. Walkthrough: `docs/10-duplicates.md` §4.
+
+| Decision | Choice |
+|---|---|
+| Same title, a day apart | still copies (a hand-made date vs the real one), **except at the same clock time on different days**: a daily habit, not a copy (mine, from the Breakfast pair) |
+| Same assignment link, different titles | **copies only when both names are just the assignment's name, worded differently** (Faith, 2026-10-03, picked over "identical titles only"): course code and anything in brackets dropped, then the same numbers and assignment words (pre/post/lab/pset/hw/quiz, any spelling) and no other words. "Lab 1 prelab" = "Prelab 1"; "HW1 (due Fri Oct 9, week 3)" = "HW1 (Gradescope)"; "Pset1: work block (Tue night)" says more than the assignment, so it is a step, never a copy. No number, no guess (as in `matching.py`). Identical titles (after course code / source suffix / case / punctuation) still count too |
+| Why not "identical titles only" | checked read-only against her 280 live tasks on 2026-10-03: it would have missed two real pairs that night (the Canvas-made "ENGR 40M: Prelab 1 (Gradescope)" next to her "Lab 1 prelab (Gradescope)"; two "EE 160A: HW1" tasks). The chosen rule finds exactly those two and nothing else |
+| A pending duplicates question the check no longer finds (tasks done, deleted, or no longer alike) | **withdrawn**, with a one-line text ("no need to answer my duplicates question, it's out of date (nothing was deleted)"), so it can't block the queue (mine; same as the Gradescope match question) |
+| Date-only tasks with the same title a day apart | **unchanged: still asked about** (mine, the minimal change). If a date-only daily habit shows up, narrow this the same way |
