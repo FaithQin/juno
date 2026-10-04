@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-03 (night, later)
+- Replies: a Telegram reply carries the message she answered (or the part she quoted) into the prompt; replying yes/no
+  to a proposal's message answers it however old; every text juno sends on its own (nudges, brief, sync notes,
+  proposals) is kept in the conversation, so "done" right after a nudge makes sense.
+- Sources only when asked: web-search citations are stripped from replies; "sources?" turns them into plain links.
+- Event colors: `add_event` applies her scheme (classes/sections Flamingo, audits Grape, exams Tomato) unless she names
+  a color; new `color_event` recolors one occurrence or a series, undoable; deleted events come back with their color.
+- Planned work vs deadlines: tasks with a Todoist deadline field, a duration or "block" in the title are planned work;
+  one heads-up 10 minutes before a timed block instead of due nudges; the brief and chat list "due" and "planned"
+  separately; `add_task` takes a duration and a deadline for work blocks.
+- Classes: EE 160A added (graded); EE 227 (CS 227A), EE 260A, AA 274A as audits (no syncs, no nudges, tagged in the
+  brief); MATSCI 88Q and EE 310 listed as dropped; aliases; a daily class check (9:30) texts once about classes juno
+  doesn't know. `assistant check` reports audits without a project correctly.
+- `docs/12-replies-colors-planned-classes.md`. Tests first throughout; 303 tests.
+
 ## 2026-10-03
 - Duplicate check narrowed after the wrong Sep 28 question (daily "Breakfast" tasks; her CME 102 Pset1 work blocks as
   copies of the assignment). Same title a day apart at the same clock time is a habit, not a copy. A shared assignment

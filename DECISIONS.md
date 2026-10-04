@@ -241,3 +241,21 @@ blocked every other question for five days. Walkthrough: `docs/10-duplicates.md`
 | Why not "identical titles only" | checked read-only against her 280 live tasks on 2026-10-03: it would have missed two real pairs that night (the Canvas-made "ENGR 40M: Prelab 1 (Gradescope)" next to her "Lab 1 prelab (Gradescope)"; two "EE 160A: HW1" tasks). The chosen rule finds exactly those two and nothing else |
 | A pending duplicates question the check no longer finds (tasks done, deleted, or no longer alike) | **withdrawn**, with a one-line text ("no need to answer my duplicates question, it's out of date (nothing was deleted)"), so it can't block the queue (mine; same as the Gradescope match question) |
 | Date-only tasks with the same title a day apart | **unchanged: still asked about** (mine, the minimal change). If a date-only daily habit shows up, narrow this the same way |
+
+## Replies, colors, planned work, sources, classes (2026-10-03, night)
+
+Faith's message: understand replies to earlier messages, set event colors, tell due dates from scheduled work blocks,
+no sources unless asked, and make juno aware of her class changes. Walkthrough: `docs/12-replies-colors-planned-classes.md`.
+
+| Decision | Choice |
+|---|---|
+| Telegram replies | the replied-to text (or the quoted part) rides on her message; a reply yes/no to a proposal's message answers that proposal however old (mine) |
+| juno's own texts | nudges, brief, sync notes and proposals are kept in the conversation (a separate outbox stream) so "done" or "push it" right after one makes sense (mine) |
+| Sources | **only when she asks** (Faith): web-search citations (`utm_source=openai`) are stripped from replies; when she asks for sources they become plain links; other links are untouched |
+| Event colors | **juno matches her scheme automatically** (Faith): classes and sections Flamingo, audits Grape, exams Tomato, else default; a color she names wins; `color_event` recolors one occurrence or a whole series, undoable. Synced Canvas/Outlook copies stay default (mine) |
+| Planned vs due | Todoist deadline field → planned (the due date is her plan); tracked by a sync → due; duration or "block" in the title → planned; else due (mine, from her Todoist: 149 tasks with durations, 42 with deadlines) |
+| Work-block reminders | **one heads-up 10 minutes before a planned block with a start time** (Faith); no "due tomorrow" / "due in 2h" for planned work; blocks without a time only in the brief |
+| Classes | **EE 160A graded** (Faith: "actively taking and getting graded on"); **EE 227 (CS 227A), EE 260A, AA 274A audits** (Faith: "leave them as for audit"; AA 274A is labelled audit on her calendar): known for chat/Ed/Todoist, no Canvas/Gradescope sync, no nudges, "(audit)" in the brief. MATSCI 88Q and EE 310 listed as dropped |
+| CS 106B's Canvas site | not synced: it is empty, and its assignments come from Paperless/Gradescope (mine) |
+| Class check | daily 9:30: texts once about a Canvas course or Todoist class project juno doesn't know, or a synced course Canvas no longer lists (mine) |
+
