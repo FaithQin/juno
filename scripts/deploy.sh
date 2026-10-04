@@ -18,6 +18,8 @@ if ! ssh "$HOST" "[ -f $DIR/data/assistant.sqlite3 ]"; then
 fi
 if [ -d ./data/browser ]; then
   echo "shipping saved browser logins"
-  rsync -az ./data/browser/ "$HOST:$DIR/data/browser/"   # made on the Mac, consumed on the server
+  # made on the Mac, consumed on the server; --update never replaces a newer copy there (juno refreshes
+  # the Gradescope session as it browses, so the Mac's file is often older; a fresh login is always newer)
+  rsync -az --update ./data/browser/ "$HOST:$DIR/data/browser/"
 fi
 ssh "$HOST" "cd $DIR && docker compose up -d --build && sleep 3 && docker compose logs --tail=15 juno"

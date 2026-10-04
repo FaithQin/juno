@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-03
+- Duplicate check narrowed after the wrong Sep 28 question (daily "Breakfast" tasks; her CME 102 Pset1 work blocks as
+  copies of the assignment). Same title a day apart at the same clock time is a habit, not a copy. A shared assignment
+  link counts only when the names agree: the same normalised title, or both just the assignment's name worded
+  differently (`assignment_named`: "Lab 1 prelab" = "Prelab 1"; "Pset1: work block" is a step). Faith picked this over
+  "identical titles only", which a read-only run over her 280 live tasks showed would miss two real pairs that night
+  (ENGR 40M Prelab 1, EE 160A HW1). The chosen rule finds exactly those two and nothing else.
+- A pending duplicates question the check no longer finds is withdrawn with a one-line text, so it can't block the
+  one-at-a-time queue again (the Sep 28 one blocked Outlook and Gradescope questions for five days).
+- `sync --dry-run` names a quiz batch by its title in progress lines, not its task id (real syncs already did).
+- `deploy.sh` ships saved browser logins with `rsync --update`: the server's Gradescope session (refreshed by juno at
+  04:48 UTC) would otherwise be replaced by the Mac's Sep 24 copy. Tonight's deploy skipped the login copy for that reason.
+- Tests first throughout; 271 tests. Deployed `ce04277` (2026-10-03 22:03 PDT): check 4 × ok, 72 active class tasks,
+  dry-run sync "nothing to change". No Todoist task deleted or edited.
+
 ## 2026-10-02
 - Dropped courses removed from `courses.yaml`: MATSCI 88Q (dropped Sep 30) and EE 310 (dropped Oct 2). Their Canvas
   courses no longer sync, so nothing gets written to the EE 310 sub-project, which is now archived in Todoist.
