@@ -40,12 +40,35 @@ def course_of(task, *, sections: dict[str, str] | None = None, projects: dict[st
     return code or (sections or {}).get(getattr(task, "section_id", None))
 
 
+BLOCK_RE = re.compile(r"\bblock\b", re.I)
+
+
+def _minutes(task) -> int | None:
+    d = getattr(task, "duration", None)
+    amount = getattr(d, "amount", None)
+    if not amount:
+        return None
+    return int(amount) * (1440 if getattr(d, "unit", "minute") == "day" else 1)
+
+
+def _deadline(task) -> date | None:
+    raw = getattr(getattr(task, "deadline", None), "date", None)
+    if isinstance(raw, str):
+        return date.fromisoformat(raw[:10])
+    return raw.date() if isinstance(raw, datetime) else raw
+
+
 def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str],
-                  projects: dict[str, str] | None = None) -> DueTask | None:
+                  projects: dict[str, str] | None = None, tracked: set[str] | None = None) -> DueTask | None:
     """Todoist task → DueTask, or None when it has no due date.
 
     Todoist due dates come in three shapes: a date (no time), a naive datetime
     (floating, meaning "in your timezone"), or an aware UTC datetime.
+
+    Planned work vs deadlines (2026-10-03): a task with a Todoist duration or Todoist's own
+    deadline field, or "block" in its title, is planned work; its date is when Faith will do it.
+    A task a sync tracks (`tracked`: Canvas/Gradescope links) is an assignment, so its date is
+    a deadline whatever else it carries.
     """
     due = getattr(task, "due", None)
     raw = getattr(due, "date", None) if due is not None else None
@@ -62,6 +85,11 @@ def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str],
     if isinstance(created, str):
         created = datetime.fromisoformat(created.replace("Z", "+00:00"))
 
+    minutes, deadline = _minutes(task), _deadline(task)
+    if tracked and task.id in tracked:
+        kind = "due"
+    else:
+        kind = "planned" if (minutes or deadline or BLOCK_RE.search(task.content or "")) else "due"
     return DueTask(
         task_id=task.id,
         content=task.content,
@@ -70,6 +98,9 @@ def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str],
         course=course_of(task, sections=sections, projects=projects),
         created_at=created,
         has_time=has_time,
+        kind=kind,
+        duration_min=minutes,
+        deadline=deadline,
     )
 
 

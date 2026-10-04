@@ -16,6 +16,7 @@ from pydantic_ai.messages import BinaryContent
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
+from ..chat import Reply
 from ..errors import describe_error
 
 TELEGRAM_LIMIT = 4096
@@ -47,6 +48,20 @@ def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
     if current:
         parts.append(current)
     return parts
+
+
+def reply_of(message) -> Reply | None:
+    """What she replied to: the part she quoted if she highlighted some, else the whole message."""
+    target = getattr(message, "reply_to_message", None)
+    if target is None:
+        return None
+    quote = getattr(message, "quote", None)
+    text = (getattr(quote, "text", None) if quote is not None else None) or getattr(target, "text", None) \
+        or getattr(target, "caption", None)
+    if not text:
+        text = "[a photo]" if getattr(target, "photo", None) else "[a message with no text]"
+    sender = getattr(target, "from_user", None)
+    return Reply(text, from_juno=bool(getattr(sender, "is_bot", False)), sent_at=getattr(target, "date", None))
 
 
 class TelegramChannel:
@@ -110,8 +125,14 @@ class TelegramChannel:
         if not self._allowed(chat_id):
             return
         await self.bot.send_chat_action(chat_id, ChatAction.TYPING)
+        extra: dict = {}
+        if images:
+            extra["images"] = images
+        quoted = reply_of(update.message)
+        if quoted is not None:
+            extra["reply_to"] = quoted
         try:
-            reply = await (self.on_message(text, images=images) if images else self.on_message(text))
+            reply = await self.on_message(text, **extra)
         except Exception as e:
             log.exception("handling a message failed")
             reply = describe_error(e)

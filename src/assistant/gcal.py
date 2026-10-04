@@ -49,12 +49,15 @@ def events_from_api(items: list[dict], *, calendar: str, tz: ZoneInfo, calendar_
             calendar_id=calendar_id,
             description=it.get("description"),
             canvas_id=int(canvas_id) if str(canvas_id or "").isdigit() else None,
+            color_id=it.get("colorId"),
+            recurring_id=it.get("recurringEventId"),
         ))
     return events
 
 
 def event_body(*, title: str, start: datetime, end: datetime | None = None, location: str | None = None,
-               description: str | None = None, canvas_id: int | None = None, source_url: str | None = None) -> dict:
+               description: str | None = None, canvas_id: int | None = None, source_url: str | None = None,
+               color_id: str | None = None) -> dict:
     """The JSON Google expects for insert/patch. End defaults to one hour after start."""
     end = end or start + timedelta(hours=1)
     tzname = str(start.tzinfo) if isinstance(start.tzinfo, ZoneInfo) else "America/Los_Angeles"
@@ -71,6 +74,8 @@ def event_body(*, title: str, start: datetime, end: datetime | None = None, loca
         body["extendedProperties"] = {"private": {"canvas_id": str(canvas_id)}}
     if source_url:
         body["source"] = {"title": "Canvas", "url": source_url}
+    if color_id:
+        body["colorId"] = color_id
     return body
 
 

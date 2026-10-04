@@ -18,9 +18,10 @@ from typing import Callable
 from zoneinfo import ZoneInfo
 
 from .brief import Event, short_location, _span
+from .colors import NAMES as COLOR_NAMES, ColorScheme, color_id, color_name
 from .gcal import event_body
 from .db import Store
-from .reminders import DueTask
+from .reminders import DueTask, deadline_words, duration_words, planned_tail
 from .tasks import due_task_from, match_tasks, normalize_course
 from .web import canvas_api_path, is_canvas_url
 
@@ -34,7 +35,8 @@ class ChatOps:
     def __init__(self, *, store: Store, todoist, calendar, tz: ZoneInfo, courses: list[str],
                  sections: dict[str, str], classes_project_id: str, calendar_names: list[str],
                  now: Callable[[], datetime], web=None, browser=None, ed=None,
-                 course_projects: dict[str, str] | None = None):
+                 course_projects: dict[str, str] | None = None, colors: ColorScheme | None = None,
+                 audits: list[str] | None = None):
         self.web = web                        # WebReader, or None when links can't be opened
         self.browser = browser                # BrowserSession, or None when there is no browser
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
@@ -43,6 +45,8 @@ class ChatOps:
         self.sync_outlook = None              # () -> str | None, wired by app.py when OUTLOOK_ICS_URL is set
         self.check_duplicates = None          # () -> str | None, wired by app.py (runs the duplicate check on the main loop)
         self.answer_job = None                # async (approved) -> str, wired by ChatSession
+        self.colors = colors                  # her scheme for events juno adds; None = no automatic colors
+        self.audit_codes = set(audits or [])  # courses she audits: no nudges, tagged in the brief
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -110,15 +114,27 @@ class ChatOps:
             out.append(t)
         return out
 
-    def due_tasks(self) -> list[DueTask]:
-        """Classes plus p1/p2 anywhere: what the nudges and the chat cover."""
-        out = [d for d in (due_task_from(t, tz=self.tz, sections=self.course_by_section, projects=self.course_by_project) for t in self._candidates()) if d]
+    def _tracked(self) -> set[str]:
+        """Tasks a sync keeps (Canvas, Gradescope): assignments, so their dates are deadlines."""
+        return {link.task_id for link in self.store.links().values()}
+
+    def _due(self, tasks) -> list[DueTask]:
+        tracked = self._tracked()
+        out = [d for d in (due_task_from(t, tz=self.tz, sections=self.course_by_section, projects=self.course_by_project,
+                                         tracked=tracked) for t in tasks) if d]
         return sorted(out, key=lambda d: d.due_at)
+
+    def due_tasks(self) -> list[DueTask]:
+        """Classes plus p1/p2 anywhere: what the chat covers."""
+        return self._due(self._candidates())
+
+    def nudge_tasks(self) -> list[DueTask]:
+        """What the nudges cover: the chat's tasks minus audited courses (Faith, 2026-10-03)."""
+        return [t for t in self.due_tasks() if t.course not in self.audit_codes]
 
     def all_due_tasks(self) -> list[DueTask]:
         """Every dated task in the account: what the morning brief covers."""
-        out = [d for d in (due_task_from(t, tz=self.tz, sections=self.course_by_section, projects=self.course_by_project) for t in self.todoist.all_tasks()) if d]
-        return sorted(out, key=lambda d: d.due_at)
+        return self._due(self.todoist.all_tasks())
 
     def tasks_overview(self, scope: str, course: str | None = None) -> str:
         """scope: today | tomorrow | week | overdue | all."""
@@ -134,11 +150,23 @@ class ChatOps:
         def day_of(t: DueTask) -> date:
             return self._local(t.due_at).date()
 
-        if scope == "today":
-            picked, header = [t for t in tasks if day_of(t) == today], "due today:"
-        elif scope == "tomorrow":
-            picked, header = [t for t in tasks if day_of(t) == today + timedelta(days=1)], "due tomorrow:"
-        elif scope == "week":
+        if scope in ("today", "tomorrow"):
+            d = today if scope == "today" else today + timedelta(days=1)
+            due = [t for t in tasks if t.kind == "due" and day_of(t) == d]
+            deadline_only = [t for t in tasks if t.kind == "planned" and t.deadline == d and day_of(t) != d]
+            planned = [t for t in tasks if t.kind == "planned" and day_of(t) == d]
+            lines: list[str] = []
+            if due or deadline_only:
+                lines.append(f"{code.lower()}:" if code else f"due {scope}:")
+                lines += [f"- {self._stamp(t, scope)} {t.content}{self._priority_tag(t)}" for t in due]
+                lines += [f"- deadline · {t.content} (planned {self._local(t.due_at).strftime('%a').lower()})" for t in deadline_only]
+            else:
+                lines.append(f"nothing due {scope} for {code}" if code else f"nothing due {scope}")
+            if planned:
+                lines.append(f"planned {scope} (work time, not deadlines):")
+                lines += [f"- {self._stamp(t, scope)} {t.content}{planned_tail(t, today=today)}{self._priority_tag(t)}" for t in planned]
+            return "\n".join(lines)
+        if scope == "week":
             picked, header = [t for t in tasks if now <= t.due_at and day_of(t) <= today + timedelta(days=7)], "this week:"
         elif scope == "overdue":
             picked, header = [t for t in tasks if t.due_at < now], "overdue:"
@@ -152,7 +180,11 @@ class ChatOps:
             return f"{what} for {code}" if code else what
         if code:
             header = f"{code.lower()}:"
-        return "\n".join([header] + [f"- {self._stamp(t, scope)} {t.content}{self._priority_tag(t)}" for t in picked])
+        def line(t: DueTask) -> str:
+            tail = planned_tail(t, today=today, label=True) if t.kind == "planned" else ""
+            return f"- {self._stamp(t, scope)} {t.content}{tail}{self._priority_tag(t)}"
+
+        return "\n".join([header] + [line(t) for t in picked])
 
     def schedule(self, day: str = "today") -> str:
         today = self._local(self.now()).date()
@@ -211,7 +243,8 @@ class ChatOps:
                     return code, rest
         return None, title
 
-    def add_task(self, title: str, due: str | None = None, course: str | None = None, notes: str | None = None) -> str:
+    def add_task(self, title: str, due: str | None = None, course: str | None = None, notes: str | None = None,
+                 duration: int | None = None, deadline: str | None = None) -> str:
         code = None
         if course:
             code = normalize_course(course, self.courses)
@@ -226,18 +259,32 @@ class ChatOps:
         if isinstance(parsed, str):
             return parsed
         due_at, due_date = parsed
+        deadline_date = None
+        if deadline:
+            if not DATE_RE.match(deadline.strip()):
+                return "error: deadline must be an ISO date (2026-10-08); ask if unsure"
+            deadline_date = date.fromisoformat(deadline.strip())
         content = f"{code}: {title}" if title else code
         if code in self.project_by_course:          # the course's own sub-project, no section
             project_id, section_id = self.project_by_course[code], None
         else:                                       # legacy: its section inside Classes
             project_id, section_id = self.classes_project_id, self.section_by_course.get(code)
+        extra: dict = {}
+        if duration:
+            extra["duration_minutes"] = int(duration)
+        if deadline_date:
+            extra["deadline"] = deadline_date
         task = self.todoist.add_task(
             content=content, description=notes or "", project_id=project_id,
-            section_id=section_id, due_at=due_at, due_date=due_date, priority=1,
+            section_id=section_id, due_at=due_at, due_date=due_date, priority=1, **extra,
         )
         self.store.log_action("add_task", {"task_id": task.id, "content": content}, at=self.now())
-        when = self._when(due_at or due_date) if (due_at or due_date) else "no date"
-        return f"added: {content} ({when})"
+        bits = [self._when(due_at or due_date) if (due_at or due_date) else "no date"]
+        if duration:
+            bits.append(duration_words(int(duration)))
+        if deadline_date:
+            bits.append(f"deadline {deadline_words(deadline_date, today=self._local(self.now()).date())}")
+        return f"added: {content} ({' · '.join(bits)})"
 
     def _pick(self, query: str) -> object | str:
         matches = match_tasks(query, self._candidates(), sections=self.course_by_section,
@@ -374,6 +421,10 @@ class ChatOps:
                 "end": {"dateTime": old_end.isoformat(timespec="seconds"), "timeZone": tzname},
             })
             msg = f"undone: {p['title']} back to {self._day_span(old_start, old_end)}"
+        elif a.kind == "color_event":
+            self.calendar.update_event(p["calendar_id"], p["event_id"], {"colorId": p.get("old") or None})
+            what = f"every {p['title']}" if p.get("series") else p["title"]
+            msg = f"undone: {what} is {color_name(p.get('old'))} again"
         elif a.kind == "delete_event":
             self.calendar.create_event(p["calendar_id"], p["body"])
             msg = f"undone: {p['title']} is back on {p['day']}"
@@ -433,7 +484,7 @@ class ChatOps:
                 return cal_id, known
         return f"no calendar called '{name}' (i know {', '.join(self.calendar_names)})"
 
-    def _pick_event(self, query: str) -> Event | str:
+    def _pick_event(self, query: str, *, series_ok: bool = False) -> Event | str:
         if self.calendar is None:
             return "calendar isn't connected yet. run: uv run assistant gcal-auth"
         now = self.now()
@@ -451,14 +502,24 @@ class ChatOps:
                 matches.append(e)
         if not matches:
             return f"no event matches '{query}' in the next two weeks"
+        if series_ok and matches[0].recurring_id and all(m.recurring_id == matches[0].recurring_id for m in matches):
+            return matches[0]                       # several occurrences of one series: that's one thing
         if len(matches) > 1:
             return "which one?\n" + "\n".join(f"- {e.title} ({self._day_span(e.start, e.end)})" for e in matches[:6])
         return matches[0]
 
+    COLOR_ERROR = f"error: color must be one of {COLOR_NAMES} (or default)"
+
     def add_event(self, title: str, start: str, end: str | None = None, location: str | None = None,
-                  calendar: str | None = None, notes: str | None = None) -> str:
+                  calendar: str | None = None, notes: str | None = None, color: str | None = None) -> str:
         if self.calendar is None:
             return "calendar isn't connected yet. run: uv run assistant gcal-auth"
+        if color is not None:
+            cid = color_id(color)
+            if cid is None:
+                return self.COLOR_ERROR
+        else:                                       # her scheme: classes flamingo, audits grape, exams tomato
+            cid = self.colors.pick(title) if self.colors else None
         target = self._calendar_id(calendar)
         if isinstance(target, str):
             return target
@@ -467,11 +528,12 @@ class ChatOps:
         if start_dt is None:
             return self.START_ERROR
         end_dt = self._parse_dt(end) if end else None
-        body = event_body(title=title.strip(), start=start_dt, end=end_dt, location=location, description=notes)
+        body = event_body(title=title.strip(), start=start_dt, end=end_dt, location=location, description=notes, color_id=cid or None)
         created = self.calendar.create_event(cal_id, body)
         self.store.log_action("add_event", {"calendar_id": cal_id, "event_id": created["id"], "title": title.strip()}, at=self.now())
         where = f" at {location}" if location else ""
-        return f"added: {title.strip()}, {self._day_span(start_dt, end_dt or start_dt + timedelta(hours=1))}{where} ({label})"
+        tag = f"{label}, {color_name(cid)}" if cid else label
+        return f"added: {title.strip()}, {self._day_span(start_dt, end_dt or start_dt + timedelta(hours=1))}{where} ({tag})"
 
     def move_event(self, query: str, start: str, end: str | None = None) -> str:
         e = self._pick_event(query)
@@ -491,11 +553,33 @@ class ChatOps:
                                              "old_start": e.start.isoformat(), "old_end": e.end.isoformat() if e.end else None}, at=self.now())
         return f"moved: {e.title} → {self._day_span(new_start, new_end)}"
 
+    def color_event(self, query: str, color: str, all_occurrences: bool = False) -> str:
+        cid = color_id(color)
+        if cid is None:
+            return self.COLOR_ERROR
+        e = self._pick_event(query, series_ok=all_occurrences)
+        if isinstance(e, str):
+            return e
+        series = bool(all_occurrences and e.recurring_id)
+        target = e.recurring_id if series else e.id
+        if series:
+            master = self.calendar.get_event(e.calendar_id, target)
+            old = master.get("colorId") if isinstance(master, dict) else None
+        else:
+            old = e.color_id
+        self.calendar.update_event(e.calendar_id, target, {"colorId": cid or None})   # None (JSON null) clears it
+        self.store.log_action("color_event", {"calendar_id": e.calendar_id, "event_id": target, "title": e.title,
+                                              "old": old, "series": series}, at=self.now())
+        if series:
+            return f"colored every {e.title} {color_name(cid)}"
+        return f"colored {e.title} {color_name(cid)} ({self._day_span(e.start, e.end)})"
+
     def delete_event(self, query: str) -> str:
         e = self._pick_event(query)
         if isinstance(e, str):
             return e
-        body = event_body(title=e.title, start=e.start, end=e.end, location=e.location, description=e.description, canvas_id=e.canvas_id)
+        body = event_body(title=e.title, start=e.start, end=e.end, location=e.location, description=e.description, canvas_id=e.canvas_id,
+                          color_id=e.color_id)
         self.calendar.delete_event(e.calendar_id, e.id)
         self.store.log_action("delete_event", {"calendar_id": e.calendar_id, "body": body, "title": e.title,
                                                "day": self._date_words(self._local(e.start).date())}, at=self.now())

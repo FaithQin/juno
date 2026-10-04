@@ -35,7 +35,7 @@ async def run_nudges_job(ops: ChatOps, store: Store, *, send: Send, now: datetim
             offline_since = last_dt   # we missed at least two scans: say so in any late nudge
 
     try:
-        tasks = await retrying(ops.due_tasks, label="nudges: todoist", delays=(5, 20), sleep=sleep)
+        tasks = await retrying(getattr(ops, "nudge_tasks", ops.due_tasks), label="nudges: todoist", delays=(5, 20), sleep=sleep)
     except Exception as e:
         if not is_transient(e):
             raise
@@ -78,11 +78,17 @@ async def run_brief_job(ops: ChatOps, *, send: Send, now: datetime | None = None
     def day_of(t):
         return t.due_at.astimezone(ops.tz).date()
 
+    def due_on(d):   # deadlines that day: due tasks, plus planned work whose Todoist deadline it is
+        return ([t for t in tasks if t.kind == "due" and day_of(t) == d]
+                + [t for t in tasks if t.kind == "planned" and t.deadline == d and day_of(t) != d])
+
     await send(format_brief(
         now=now, tz=ops.tz, events=events,
-        due_today=[t for t in tasks if day_of(t) == today],
-        due_tomorrow=[t for t in tasks if day_of(t) == today + timedelta(days=1)],
+        due_today=due_on(today),
+        planned_today=[t for t in tasks if t.kind == "planned" and day_of(t) == today],
+        due_tomorrow=due_on(today + timedelta(days=1)),
         overdue=[t for t in tasks if start_of_today - OVERDUE_WINDOW <= t.due_at < start_of_today],
+        audits=getattr(ops, "audit_codes", set()),
     ))
 
 

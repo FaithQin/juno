@@ -180,16 +180,22 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
 
     @agent.tool
     def add_task(ctx: RunContext[ChatOps], title: str, due: str | None = None, course: str | None = None,
-                 notes: str | None = None) -> str:
+                 notes: str | None = None, duration_minutes: int | None = None, deadline: str | None = None) -> str:
         """Create a task in Todoist under the right course.
+
+        For a work block (time she sets aside to work on something), name it "<thing>: work block",
+        put the work time in `due`, give it `duration_minutes`, and set `deadline` to the real due date
+        of the thing she's working on. That's how a work block is told apart from a deadline.
 
         Args:
             title: what to do, without the course code.
-            due: ISO datetime (2026-09-24T23:59) or ISO date (2026-09-24); omit if none given.
+            due: ISO datetime (2026-09-24T23:59) or ISO date (2026-09-24); for a work block, when she'll work.
             course: course code such as "CME 102"; omit if it's already in the title.
             notes: optional extra detail for the task description.
+            duration_minutes: length of a work block, e.g. 60.
+            deadline: ISO date of the real deadline, for a work block.
         """
-        return ctx.deps.add_task(title, due=due, course=course, notes=notes)
+        return ctx.deps.add_task(title, due=due, course=course, notes=notes, duration=duration_minutes, deadline=deadline)
 
     @agent.tool
     def complete_task(ctx: RunContext[ChatOps], query: str) -> str:
@@ -262,7 +268,7 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
 
     @agent.tool
     def add_event(ctx: RunContext[ChatOps], title: str, start: str, end: str | None = None, location: str | None = None,
-                  calendar: str | None = None, notes: str | None = None) -> str:
+                  calendar: str | None = None, notes: str | None = None, color: str | None = None) -> str:
         """Put an event on Faith's Google Calendar.
 
         Args:
@@ -272,8 +278,22 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
             location: room or place, if given.
             calendar: "Stanford" for classes and exams, "TA" for office hours and help sessions; omit for personal.
             notes: optional description.
+            color: only if she names one ("green", "flamingo", "default"); otherwise leave it out and her
+                scheme applies (classes and sections flamingo, audits grape, exams tomato).
         """
-        return ctx.deps.add_event(title, start, end=end, location=location, calendar=calendar, notes=notes)
+        return ctx.deps.add_event(title, start, end=end, location=location, calendar=calendar, notes=notes, color=color)
+
+    @agent.tool
+    def color_event(ctx: RunContext[ChatOps], query: str, color: str, all_occurrences: bool = False) -> str:
+        """Change an event's color (next two weeks). Undoable.
+
+        Args:
+            query: a few words from the event title.
+            color: a Google color (lavender, sage, grape, flamingo, banana, tangerine, peacock, graphite,
+                blueberry, basil, tomato), a plain word like "green", or "default".
+            all_occurrences: True to recolor every occurrence of a repeating event (a weekly class).
+        """
+        return ctx.deps.color_event(query, color, all_occurrences=all_occurrences)
 
     @agent.tool
     def move_event(ctx: RunContext[ChatOps], query: str, start: str, end: str | None = None) -> str:

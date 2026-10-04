@@ -99,10 +99,15 @@ class TodoistClient:
         return _flatten(self.api.filter_tasks(query=query))
 
     def add_task(self, *, content: str, description: str = "", project_id: str, section_id: str | None = None,
-                 due_at: datetime | None = None, due_date: date | None = None, priority: int = 1) -> Task:
+                 due_at: datetime | None = None, due_date: date | None = None, priority: int = 1,
+                 duration_minutes: int | None = None, deadline: date | None = None) -> Task:
         kwargs: dict = dict(
             description=description, project_id=project_id, section_id=section_id, priority=priority,
         )
+        if duration_minutes:                 # planned work: how long the block is
+            kwargs["duration"], kwargs["duration_unit"] = int(duration_minutes), "minute"
+        if deadline is not None:             # Todoist's deadline field: the real due date of planned work
+            kwargs["deadline_date"] = deadline
         if due_at is not None:
             kwargs["due_datetime"] = due_at.astimezone(timezone.utc)
         elif due_date is not None:

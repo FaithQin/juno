@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dataclasses import replace
 
@@ -102,6 +103,49 @@ def compact_previous_turns(messages: list[ModelMessage], *, keep_images: int = K
 
 DEFAULT_RUN_TIMEOUT = timedelta(seconds=180)   # whole turn, all tool calls included
 
+@dataclass(frozen=True)
+class Reply:
+    """The message she answered with Telegram's reply: its text (or the part she quoted), whether
+    juno sent it, and when. Juno's own texts from scheduled jobs are replies too: a nudge, the brief."""
+    text: str
+    from_juno: bool
+    sent_at: datetime | None = None
+
+
+# OpenAI's web search appends citations like " ([medlineplus.gov](https://…?utm_source=openai))".
+# Faith wants sources only when she asks (2026-10-03), so they are taken out of what she reads;
+# the stored history keeps them, so "sources?" in a later message can still be answered.
+_OPENAI_URL = r"https?://[^\s)]*utm_source=openai[^\s)]*"
+CITATION_RE = re.compile(r" ?\(\[([^\]]+)\]\((" + _OPENAI_URL + r")\)\)")
+INLINE_CITATION_RE = re.compile(r"\[([^\]]+)\]\((" + _OPENAI_URL + r")\)")
+SOURCES_ASK_RE = re.compile(
+    r"\b(sources?|cite|citations?|links?|urls?|references?|where (did|do) you (get|find|read)|how do you know)\b", re.I)
+REPLY_SNIPPET = 600
+
+
+def _clean_url(url: str) -> str:
+    parts = urlsplit(url)
+    query = urlencode([(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "utm_source"])
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def asks_for_sources(text: str) -> bool:
+    return bool(SOURCES_ASK_RE.search(text or ""))
+
+
+def tidy_reply(text: str, *, keep_sources: bool) -> str:
+    """Web-search citations out (or, when she asked for sources, turned into plain links).
+    Links that aren't search citations, like a sign-up page she asked for, are left alone."""
+    if keep_sources:
+        text = CITATION_RE.sub(lambda m: f" ({_clean_url(m[2])})", text)
+        text = INLINE_CITATION_RE.sub(lambda m: f"{m[1]} ({_clean_url(m[2])})", text)
+    else:
+        text = CITATION_RE.sub("", text)
+        text = INLINE_CITATION_RE.sub(lambda m: m[1], text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    return text.strip()
+
+
 YES = {"yes", "y", "yep", "yeah", "yea", "ok", "okay", "go", "go ahead", "do it", "sure", "confirm", "👍", "please"}
 NO = {"no", "n", "nope", "stop", "cancel", "don't", "dont", "skip", "nah", "wait"}
 
@@ -126,6 +170,7 @@ class ChatSession:
         self.ops = ops
         self.store = store
         self.conversation_id = conversation_id
+        self.outbox_id = f"{conversation_id}:outbox"    # texts juno sent on its own, kept beside the chat
         self.window = window
         self.usage_limits = usage_limits
         self.run_timeout = run_timeout
@@ -157,11 +202,26 @@ class ChatSession:
             return False
         return not self.store.has_messages_after(self.conversation_id, job["asked_at"])
 
+    def note_sent(self, text: str, *, at: datetime | None = None) -> None:
+        """Record a text juno sent on its own (a nudge, the brief, a sync note, a proposal) as one of
+        juno's lines, so her answer to it, with or without Telegram's reply, makes sense to the model.
+        Kept in its own stream so it doesn't count as chat when deciding whether a proposal is fresh."""
+        message = ModelResponse(parts=[TextPart(text[:2000])], timestamp=at or self.ops.now())
+        self.store.save_messages(self.outbox_id, ModelMessagesTypeAdapter.dump_json([message]), at=at or self.ops.now())
+
     def _history(self, now):
         history = []
-        for blob in self.store.load_messages(self.conversation_id, since=now - self.window):
+        for blob in self.store.load_messages([self.conversation_id, self.outbox_id], since=now - self.window):
             history.extend(ModelMessagesTypeAdapter.validate_json(blob))
         return compact_previous_turns(history)
+
+    def _reply_note(self, reply: Reply) -> str:
+        who = "your message" if reply.from_juno else "her own earlier message"
+        when = f" from {self._stamp(reply.sent_at)}" if reply.sent_at else ""
+        quoted = " ".join(reply.text.split())
+        if len(quoted) > REPLY_SNIPPET:
+            quoted = quoted[:REPLY_SNIPPET].rstrip() + "…"
+        return f'(replying to {who}{when}: "{quoted}")'
 
     def _stamp(self, now) -> str:
         """The clock rides on her message ("[wed sep 23, 10:00am] hi"), not in the instructions:
@@ -172,8 +232,11 @@ class ChatSession:
     def _bump(self, key: str, n: int) -> None:
         self.store.kv_set(key, str(int(self.store.kv_get(key) or 0) + n))
 
-    async def _run(self, text: str | None, *, images: list[BinaryContent] | None = None, deferred=None):
+    async def _run(self, text: str | None, *, images: list[BinaryContent] | None = None, reply_to: Reply | None = None,
+                   deferred=None):
         now = self.ops.now()
+        if text is not None and reply_to is not None:
+            text = f"{self._reply_note(reply_to)} {text}"
         prompt = f"[{self._stamp(now)}] {text}" if text is not None else None
         if images:
             prompt = [prompt or f"[{self._stamp(now)}]", *images]
@@ -212,7 +275,16 @@ class ChatSession:
         verdict = True if approved else ToolDenied("faith said no")
         return await self._run(None, deferred=DeferredToolResults(approvals={p.tool_call_id: verdict}))
 
-    async def handle(self, text: str, *, images: list[BinaryContent] | None = None) -> str:
+    def _replies_to_proposal(self, reply: Reply | None) -> bool:
+        """Is she answering the pending proposal's own message? Then a yes/no is unambiguous, however
+        much chat happened since it was asked."""
+        job = self.store.pending_job()
+        if reply is None or job is None or not job.get("question"):
+            return False
+        quoted, question = " ".join(reply.text.split()), " ".join(job["question"].split())
+        return len(quoted) >= 12 and quoted in question
+
+    async def handle(self, text: str, *, images: list[BinaryContent] | None = None, reply_to: Reply | None = None) -> str:
         answer = _norm(text) if not images else ""       # a photo is never a yes or a no
         if self.pending is not None:                     # a tool waiting on her yes is always the latest question
             if answer in YES:
@@ -221,12 +293,14 @@ class ChatSession:
                 return self._finish(await self._resume(False))
             skipped = self.pending.description
             await self._resume(False)                    # close the dangling tool call, then move on
-            reply = self._finish(await self._run(text, images=images))
-            return f"skipped the pending {skipped}.\n\n{reply}"
-        if self._job_is_fresh():
-            if answer in YES:
-                return await self._answer_job(True)
-            if answer in NO:
-                return await self._answer_job(False)
-            # anything else: normal chat, the proposal keeps waiting
-        return self._finish(await self._run(text, images=images))
+            reply = self._finish(await self._run(text, images=images, reply_to=reply_to))
+            return f"skipped the pending {skipped}.\n\n{self._tidy(reply, text)}"
+        if (answer in YES or answer in NO) and (self._replies_to_proposal(reply_to) or (reply_to is None and self._job_is_fresh())):
+            return await self._answer_job(answer in YES)
+        # anything else: normal chat; a pending proposal keeps waiting and stays visible to the model
+        return self._tidy(self._finish(await self._run(text, images=images, reply_to=reply_to)), text)
+
+    def _tidy(self, reply: str, asked: str) -> str:
+        if self.pending is not None:                     # an approval question: nothing to tidy
+            return reply
+        return tidy_reply(reply, keep_sources=asks_for_sources(asked))

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
@@ -27,6 +27,8 @@ class FakeTask:
     created_at: datetime = field(default_factory=lambda: datetime(2026, 9, 20, 12, 0, tzinfo=timezone.utc))
     description: str = ""
     is_completed: bool = False
+    duration: object = None            # like the SDK: Duration(amount, unit) or None
+    deadline: object = None            # like the SDK: Deadline(date) or None
 
 
 class FakeTodoist:
@@ -103,11 +105,14 @@ class FakeTodoist:
         return t
 
     # writes
-    def add_task(self, *, content, description="", project_id, section_id=None, due_at=None, due_date=None, priority=1):
+    def add_task(self, *, content, description="", project_id, section_id=None, due_at=None, due_date=None, priority=1,
+                 duration_minutes=None, deadline=None):
         self._n += 1
         due = FakeDue(due_at) if due_at else FakeDue(due_date) if due_date else None
         t = FakeTask(f"T{self._n}", content, due, priority, section_id, project_id, description=description,
-                     created_at=datetime.now(timezone.utc))
+                     created_at=datetime.now(timezone.utc),
+                     duration=SimpleNamespace(amount=duration_minutes, unit="minute") if duration_minutes else None,
+                     deadline=SimpleNamespace(date=deadline) if deadline else None)
         self._tasks[t.id] = t
         return t
 
@@ -168,8 +173,7 @@ class FakeCalendar:
 
     def _add(self, e: Event) -> Event:
         self._n += 1
-        e = Event(e.title, e.start, e.end, e.location, e.all_day, e.calendar, id=e.id or f"ev{self._n}",
-                  calendar_id=e.calendar_id or self.names.get(e.calendar, "primary"), description=e.description)
+        e = replace(e, id=e.id or f"ev{self._n}", calendar_id=e.calendar_id or self.names.get(e.calendar, "primary"))
         self.events[e.id] = e
         return e
 
@@ -184,7 +188,9 @@ class FakeCalendar:
         return sorted((e for e in self.events.values() if start <= e.start < end and e.calendar_id in ids), key=lambda e: e.start)
 
     def get_event(self, calendar_id, event_id):
-        return self.events[event_id]
+        """Like Google: a dict. An id that names a series answers with its first occurrence's fields."""
+        e = self.events.get(event_id) or next(x for x in self.events.values() if x.recurring_id == event_id)
+        return {"id": event_id, "summary": e.title, "colorId": e.color_id}
 
     def create_event(self, calendar_id, body):
         name = next((n for n, i in self.names.items() if i == calendar_id), calendar_id)
@@ -193,17 +199,23 @@ class FakeCalendar:
         if start is None:   # all-day
             start = datetime.fromisoformat(body["start"]["date"]).replace(tzinfo=timezone.utc)
         e = self._add(Event(body["summary"], start, end, body.get("location"), "date" in body["start"], name, calendar_id=calendar_id,
-                            description=body.get("description")))
+                            description=body.get("description"), color_id=body.get("colorId")))
         self.bodies[e.id] = body
         return {"id": e.id, "summary": e.title, "extendedProperties": body.get("extendedProperties", {})}
 
     def update_event(self, calendar_id, event_id, patch):
+        """Patching a series id changes every occurrence, as in Google."""
         self.patches.append((calendar_id, event_id, patch))
-        e = self.events[event_id]
-        start = datetime.fromisoformat(patch["start"]["dateTime"]) if "start" in patch else e.start
-        end = datetime.fromisoformat(patch["end"]["dateTime"]) if "end" in patch else e.end
-        self.events[event_id] = Event(patch.get("summary", e.title), start, end, patch.get("location", e.location), e.all_day,
-                                      e.calendar, id=e.id, calendar_id=e.calendar_id, description=patch.get("description", e.description))
+        targets = [event_id] if event_id in self.events else [i for i, x in self.events.items() if x.recurring_id == event_id]
+        if not targets:
+            raise KeyError(event_id)
+        for i in targets:
+            e = self.events[i]
+            start = datetime.fromisoformat(patch["start"]["dateTime"]) if "start" in patch else e.start
+            end = datetime.fromisoformat(patch["end"]["dateTime"]) if "end" in patch else e.end
+            self.events[i] = replace(e, title=patch.get("summary", e.title), start=start, end=end,
+                                     location=patch.get("location", e.location), description=patch.get("description", e.description),
+                                     color_id=patch["colorId"] if "colorId" in patch else e.color_id)
         return {"id": event_id}
 
     def delete_event(self, calendar_id, event_id):

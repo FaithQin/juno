@@ -265,10 +265,14 @@ class Store:
         )
         self.conn.commit()
 
-    def load_messages(self, conversation_id: str, *, since: datetime) -> list[bytes]:
+    def load_messages(self, conversation_id: str | list[str], *, since: datetime) -> list[bytes]:
+        """Payloads of one conversation, or of several interleaved in the order they were saved
+        (the chat plus the texts juno sent on its own)."""
+        ids = [conversation_id] if isinstance(conversation_id, str) else list(conversation_id)
+        marks = ",".join("?" * len(ids))
         rows = self.conn.execute(
-            "SELECT payload FROM messages WHERE conversation_id=? AND created_at>=? ORDER BY id",
-            (conversation_id, since.isoformat(timespec="seconds")),
+            f"SELECT payload FROM messages WHERE conversation_id IN ({marks}) AND created_at>=? ORDER BY id",
+            (*ids, since.isoformat(timespec="seconds")),
         ).fetchall()
         return [bytes(r["payload"]) for r in rows]
 

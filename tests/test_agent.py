@@ -23,7 +23,7 @@ EXPECTED_TOOLS = {
     "snooze_reminder", "remember", "forget", "undo", "read_link", "edit_task",
     "browse", "browser_click", "browser_type", "browser_select", "browser_submit", "browser_back",
     "ed_announcements", "delete_task", "add_event", "move_event", "delete_event", "sync_now", "answer_proposal",
-    "find_duplicates",
+    "find_duplicates", "color_event",
 }
 
 
