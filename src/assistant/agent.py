@@ -180,8 +180,13 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
 
     @agent.tool
     def add_task(ctx: RunContext[ChatOps], title: str, due: str | None = None, course: str | None = None,
-                 notes: str | None = None, duration_minutes: int | None = None, deadline: str | None = None) -> str:
-        """Create a task in Todoist under the right course.
+                 notes: str | None = None, duration_minutes: int | None = None, deadline: str | None = None,
+                 project: str | None = None) -> str:
+        """Create a task in Todoist: under its course, or in the Todoist project she names.
+
+        A task that isn't for a class goes in a project only she picks ("one-off tasks", "ssig",
+        "health"). Never guess one: if she didn't name it, call without `project` and ask her
+        which, using the list this returns.
 
         For a work block (time she sets aside to work on something), name it "<thing>: work block",
         put the work time in `due`, give it `duration_minutes`, and set `deadline` to the real due date
@@ -194,8 +199,10 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
             notes: optional extra detail for the task description.
             duration_minutes: length of a work block, e.g. 60.
             deadline: ISO date of the real deadline, for a work block.
+            project: the Todoist project she named, for a task that isn't for a class.
         """
-        return ctx.deps.add_task(title, due=due, course=course, notes=notes, duration=duration_minutes, deadline=deadline)
+        return ctx.deps.add_task(title, due=due, course=course, notes=notes, duration=duration_minutes, deadline=deadline,
+                                 project=project)
 
     @agent.tool
     def complete_task(ctx: RunContext[ChatOps], query: str) -> str:

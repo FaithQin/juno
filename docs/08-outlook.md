@@ -1,5 +1,8 @@
 # 08 · Outlook meetings → Google Calendar
 
+> **Changed 2026-10-06:** new items are now added without asking, and a heads-up goes out 30 minutes
+> before each Outlook meeting. Why and how: `docs/13-outlook-auto-add-and-projects.md`.
+
 Faith's ask, verbatim: "check if a meeting has been sent to my outlook, ask me to confirm it,
 and if I confirm, populate the meeting with all the information onto my gcal."
 

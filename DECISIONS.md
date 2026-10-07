@@ -270,3 +270,19 @@ Walkthrough: `docs/12-replies-colors-planned-classes.md` §1.
 | Telegram gives no send time | not an answer; the model sees her message and asks (mine; Telegram always stamps real messages) |
 | Yes/no to an older version of the question | **juno says "nothing done: that question was replaced on …" and resends the current one, without the model** (Faith) |
 | Anything else in reply to a message from before the question | goes to the model, but `answer_proposal` is blocked for that turn, so it can't approve the new question (Faith chose the gate for replies to the old question; widened by me to any earlier message, since a reply is about what it replies to) |
+
+## Outlook adds on its own; tasks outside classes (2026-10-06)
+
+The Human Capital interview (Oct 6, 1:45pm) never reached her: the Outlook job could only ask, and its
+question waited silently behind an unanswered duplicates question since Sep 28. Walkthrough: `docs/13-outlook-auto-add-and-projects.md`.
+
+| Decision | Choice |
+|---|---|
+| Outlook → Google | **every new item, tentative invites included, is added to Stanford without asking; juno texts what it added** (Faith). Replaces "every new item is proposed" (2026-09-24) |
+| Heads-up | **a text 30 minutes before each Outlook meeting** (Faith); not for all-day items; read from Google so a slow feed doesn't matter (mine) |
+| Meetings she said no to before | stay off (Faith, in the option she picked); "Faith + Nathan // Intro Call" (Oct 7) is one of them |
+| Taking one off | "delete …" in chat (undoable); background adds are not on the undo stack, so "undo" after her own action can't delete a meeting (mine) |
+| Meetings already over | not copied (mine) |
+| A task that isn't for a class | **juno asks which Todoist project unless she names one** (Faith); names match ignoring case/punctuation, then a unique partial match |
+| Reply block | **stays wide** (Faith, after the explanation): no reply to a message from before the waiting question can answer it |
+

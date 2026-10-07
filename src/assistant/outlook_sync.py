@@ -7,7 +7,10 @@ outlook" and "i put a meeting on my outlook calendar" look the same here. No Mic
 registration, nothing that expires; the URL is the secret and lives in `.env`.
 
 Same shape as the other syncs: identity by Outlook UID (hashed to an int for `item_links`),
-never delete, and every new item is *proposed* over Telegram before anything is written.
+never delete. Every new item is copied straight to Google and juno texts what it added (until
+2026-10-06 it asked first, and an unanswered question elsewhere kept an interview off her
+calendar). A meeting she already put on Google by hand is linked, not copied. 30 minutes
+before each Outlook meeting she gets a heads-up (`heads_up`, every 10 minutes).
 A series is copied as a series (its RRULE and EXDATEs go straight to Google, in Faith's
 timezone); an occurrence Outlook moved becomes a stand-alone event, and the series gets an
 EXDATE for the original slot. Attendees are not in a published feed, and even if they were,
@@ -37,6 +40,7 @@ KIND = "outlook_event"
 DECLINED_KEY = "outlook_declined"
 GONE_KEY = "outlook_gone"
 MAX_DESCRIPTION = 4000
+HEADS_UP = timedelta(minutes=30)
 log = logging.getLogger(__name__)
 
 
@@ -317,9 +321,9 @@ class OutlookSync:
             gone.append(f"{link.name} ({self._day(start)})")
         self._kv_set_list(GONE_KEY, reported)
 
-        declined = self._kv_list(DECLINED_KEY)
-        new = [e for e in events if e.key not in links and e.uid not in declined]
-        question = None
+        declined = self._kv_list(DECLINED_KEY)       # her "no" from when juno still asked: those stay off
+        new = [e for e in events if e.key not in links and e.uid not in declined and (e.rrule or e.end > now)]
+        added_text = None
         if new:
             linked_ids = {_split(l.task_id)[1] for l in links.values()}
             lo_m, hi_m = min(e.start for e in new) - timedelta(days=1), max(e.end for e in new) + timedelta(days=1)
@@ -334,22 +338,14 @@ class OutlookSync:
                     taken.add(m.id)
             paired = {ev.key for ev, _ in pairs}
             fresh = [e for e in new if e.key not in paired]
-            digest = hashlib.sha1(",".join(sorted(e.uid for e in new)).encode()).hexdigest()
-            question = self._question(pairs, fresh)
-            slot = self.store.proposal_slot(JOB_KIND, digest)
-            if slot not in ("free", "asked"):
-                n = len(new)
-                question = f"outlook: {n} meeting{'s' if n != 1 else ''} to propose, once you've answered the {slot} proposal"
-            elif slot == "free":
-                payload = {
-                    "digest": digest,
-                    "pairs": [{"event": _dump(ev), "gcal_id": m.id, "gcal_calendar_id": m.calendar_id, "gcal_title": m.title} for ev, m in pairs],
-                    "new": [_dump(ev) for ev in fresh],
-                }
-                self.store.propose_job(JOB_KIND, payload, question, at=now)
-                if not quiet:
-                    await self.send(question)
+            job = self.store.pending_job()
+            if job is not None and job["kind"] == JOB_KIND:   # a question from when juno still asked: moot now
+                self.store.kv_delete("pending_job")
+            linked, added = await self._copy([(ev, m.calendar_id, m.id, m.title) for ev, m in pairs], fresh)
+            added_text = self._added_text(linked, added)
 
+        if added_text and not quiet:
+            await self.send(added_text)
         report = None
         if moved or gone:
             lines = ["outlook"]
@@ -362,28 +358,92 @@ class OutlookSync:
             report = "\n".join(lines)
             if not quiet:
                 await self.send(report)
-        return "\n\n".join(t for t in (report, question) if t) or None
+        return "\n\n".join(t for t in (added_text, report) if t) or None
 
-    def _question(self, pairs, new) -> str:
-        n = len(pairs) + len(new)
-        head = (f"outlook: {n} upcoming meeting{'s' if n != 1 else ''} "
-                f"{'aren' if n != 1 else 'isn'}'t on your google calendar yet.")
-        lines = [head]
-        if pairs:
-            lines.append(f"looks like {'one' if len(pairs) == 1 else 'ones'} you already have:")
-            lines += [f"- {ev.title} ({ev.start.astimezone(self.tz).strftime('%a %b %-d %-I:%M%p').lower()}) → {m.title}" for ev, m in pairs]
-        if new:
-            lines.append(f"new (i'd add to {self.target}):")
-            for ev in new:
-                if ev.rrule:
-                    lines.append(f"- {ev.title}, {_cadence(ev.rrule)} from {self._when(ev)}")
+    async def _copy(self, pairs: list[tuple[OutlookEvent, str, str, str]], fresh: list[OutlookEvent]):
+        """Link her own copies (tagged so they're recognisable later) and copy the rest to the target
+        calendar. One that Google refuses is left unlinked, so the next run tries it again."""
+        linked: list[tuple[OutlookEvent, str]] = []
+        for ev, cal_id, event_id, title in pairs:
+            self._link(ev, cal_id, event_id, adopted=True)
+            linked.append((ev, title))
+            try:
+                await asyncio.to_thread(self.calendar.update_event, cal_id, event_id,
+                                        {"extendedProperties": {"private": {"outlook_uid": ev.uid}}})
+            except Exception:
+                pass
+        added: list[OutlookEvent] = []
+        if fresh:
+            target_id = await asyncio.to_thread(self._target_id)
+            for ev in fresh:
+                try:
+                    created = await asyncio.to_thread(self.calendar.create_event, target_id,
+                                                      outlook_body(ev, tz=self.tz, note=self._note(ev)))
+                except Exception as e:
+                    log.warning("outlook: couldn't copy %r to google (%s)", ev.title, type(e).__name__)
                     continue
-                tag = " (moved occurrence)" if ev.occurrence else {"TENTATIVE": " (tentative)", "FREE": " (free)"}.get(ev.busy, "")
-                lines.append(f"- {ev.title}, {self._when(ev)}{tag}")
-        lines.append("reply yes to add them, or no to skip these (i'll still ask about new ones)")
+                self._link(ev, target_id, created["id"], adopted=False)
+                added.append(ev)
+        return linked, added
+
+    def _item(self, ev: OutlookEvent) -> str:
+        if ev.rrule:
+            return f"- {ev.title}, {_cadence(ev.rrule)} from {self._when(ev)}"
+        tag = " (moved occurrence)" if ev.occurrence else {"TENTATIVE": " (tentative)", "FREE": " (free)"}.get(ev.busy, "")
+        return f"- {ev.title}, {self._when(ev)}{tag}"
+
+    def _added_text(self, linked, added) -> str | None:
+        if not linked and not added:
+            return None
+        lines = []
+        if added:
+            lines.append(f"outlook: added {len(added)} to your {self.target} calendar:")
+            lines += [self._item(ev) for ev in sorted(added, key=lambda e: e.start)]
+        if linked:
+            lines.append("already on your calendar, now linked:" if added else
+                         f"outlook: {len(linked)} meeting{'s' if len(linked) != 1 else ''} already on your calendar, now linked:")
+            lines += [f"- {ev.title} ({ev.start.astimezone(self.tz).strftime('%a %b %-d %-I:%M%p').lower()}) → {title}"
+                      for ev, title in linked]
+        lines.append("i'll text you 30 min before each meeting. to take one off google, say delete and which one")
         return "\n".join(lines)
 
-    # -- the answer, from chat ------------------------------------------------------------
+    # -- the heads-up ---------------------------------------------------------------------
+
+    async def heads_up(self, now: datetime | None = None) -> list[str]:
+        """A text 30 minutes before each Outlook meeting (its Google copy: her title, her place, every
+        occurrence of a series), once per meeting time. Reads Google, not the feed, so a slow Outlook
+        never costs her the reminder."""
+        now = now or self.now()
+        links = [_split(l.task_id) for k, l in self.store.links().items() if k[0] == KIND]
+        if not links:
+            return []
+        ours = {event_id for _, event_id in links}
+        names = list(dict.fromkeys([self.target, *self.search_calendars]))
+        try:
+            soon = await asyncio.to_thread(self.calendar.events_in_window, names, now, now + HEADS_UP + timedelta(minutes=1), self.tz)
+        except Exception as e:
+            log.warning("outlook: couldn't read google for heads-ups (%s)", type(e).__name__)
+            return []
+        sent_before = self.store.sent_nudges()
+        texts = []
+        for e in soon:
+            if e.all_day or not (e.id in ours or e.recurring_id in ours):
+                continue
+            lead = e.start - now
+            if not timedelta(0) < lead <= HEADS_UP:
+                continue
+            key = f"outlook-heads-up:{e.id}:{e.start.isoformat()}"
+            if key in sent_before:
+                continue
+            text = f"in {round(lead.total_seconds() / 60)} min: {e.title}, {_span(e, self.tz)}"
+            if e.location:
+                text += f" · {e.location}"
+            await self.send(text)
+            self.store.mark_nudge(key, at=now)
+            texts.append(text)
+        return texts
+
+    # -- a question still out from when juno asked first (before 2026-10-06) ------------------------------------------------------------
 
     async def approve(self, payload: dict, approved: bool) -> str:
         pairs = payload.get("pairs", [])
@@ -392,24 +452,11 @@ class OutlookSync:
             declined = self._kv_list(DECLINED_KEY) | {pr["event"]["uid"] for pr in pairs} | {e.uid for e in new}
             self._kv_set_list(DECLINED_KEY, declined)
             return "ok, skipped those. i'll only ask about new outlook meetings from now on"
-        for pr in pairs:
-            ev = _load(pr["event"])
-            self._link(ev, pr["gcal_calendar_id"], pr["gcal_id"], adopted=True)
-            try:   # tag the hand-made event so it is recognisable later
-                await asyncio.to_thread(self.calendar.update_event, pr["gcal_calendar_id"], pr["gcal_id"],
-                                        {"extendedProperties": {"private": {"outlook_uid": ev.uid}}})
-            except Exception:
-                pass
-        added = 0
-        if new:
-            target_id = await asyncio.to_thread(self._target_id)
-            for ev in new:
-                created = await asyncio.to_thread(self.calendar.create_event, target_id, outlook_body(ev, tz=self.tz, note=self._note(ev)))
-                self._link(ev, target_id, created["id"], adopted=False)
-                added += 1
-        n = len(pairs)
+        linked, added = await self._copy(
+            [(_load(pr["event"]), pr["gcal_calendar_id"], pr["gcal_id"], pr.get("gcal_title", "")) for pr in pairs], new)
+        n = len(linked)
         parts = []
         if n:
             parts.append(f"linked {n} existing event{'s' if n != 1 else ''}")
-        parts.append(f"added {added} to {self.target}" if added else "nothing new to add")
+        parts.append(f"added {len(added)} to {self.target}" if added else "nothing new to add")
         return ", ".join(parts)

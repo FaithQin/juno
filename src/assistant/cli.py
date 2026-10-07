@@ -374,8 +374,8 @@ def cmd_outlook(args) -> int:
         return 1
 
     async def go():
-        await job.run()
-        print("(proposal sent; answer it in telegram)" if rt.store.kv_get("pending_job") else "(nothing to report)")
+        if not await job.run():                 # what it added or moved was already printed or texted
+            print("(nothing to report)")
 
     run_one_shot(with_cleanup(rt.ops, go()))
     return 0

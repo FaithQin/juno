@@ -83,11 +83,48 @@ def test_add_task_reads_the_course_from_the_title_and_handles_dates(tmp_path):
     assert t.section_id == "S2" and t.due.date == date(2026, 9, 28)
 
 
-def test_add_task_without_a_course_asks_instead_of_guessing(tmp_path):
-    ops, _, todoist = make_ops(tmp_path)
+HER_PROJECTS = [("INBOX", "Inbox", None), ("ONEOFF", "One-Off Tasks", None), ("AREAS", "Areas", None),
+                ("CLASSES", "Classes", "AREAS"), ("P-CME", "CME 102", "CLASSES"), ("CLUBS", "Clubs", "AREAS"),
+                ("SSIG", "SSIG", "CLUBS"), ("ENERGY", "Energy Club", "CLUBS"), ("HEALTH", "Health", "AREAS")]
+
+
+def make_her_ops(tmp_path):
+    store = Store(tmp_path / "t.sqlite3")
+    todoist = FakeTodoist(projects=HER_PROJECTS)
+    ops = ChatOps(store=store, todoist=todoist, calendar=FakeCalendar({}), tz=TZ, courses=COURSES, sections={},
+                  classes_project_id="CLASSES", calendar_names=["Stanford"], now=lambda: NOW,
+                  course_projects={"CME 102": "P-CME"})
+    return ops, store, todoist
+
+
+def test_add_task_without_a_class_or_project_asks_which_project(tmp_path):
+    """Not every task is for a class (Faith, 2026-10-06). juno asks where it goes rather than guessing."""
+    ops, _, todoist = make_her_ops(tmp_path)
     reply = ops.add_task("read chapter 3", due="2026-09-28")
-    assert reply.startswith("which course is that for?")
-    assert todoist.tasks("CLASSES") == []
+    assert reply == ("which project is that for? a class (ENGR 40M, CS 106B, CME 102, MATSCI 88Q, EE 310, EE 100) "
+                     "or one of: Inbox, One-Off Tasks, Areas, Clubs, SSIG, Energy Club, Health")
+    assert todoist.all_tasks() == []
+
+
+def test_add_task_goes_to_the_project_she_names(tmp_path):
+    """Faith, 2026-10-06: "just add it to one-off tasks"."""
+    ops, store, todoist = make_her_ops(tmp_path)
+    assert ops.add_task("Try out Instinct", due="2026-09-28", project="one-off tasks") == "added: Try out Instinct (mon sep 28) → One-Off Tasks"
+    (t,) = todoist.tasks("ONEOFF")
+    assert t.content == "Try out Instinct" and t.section_id is None and t.due.date == date(2026, 9, 28)
+    assert store.last_undoable().kind == "add_task"
+    assert ops.add_task("send the sponsor deck", project="ssig") == "added: send the sponsor deck (no date) → SSIG"
+    assert ops.add_task("book a physical", project="Health") == "added: book a physical (no date) → Health"
+    assert ops.add_task("pset 3", project="cme 102") == "added: CME 102: pset 3 (no date)"   # a class named as a project
+    assert [t.project_id for t in todoist.all_tasks()] == ["ONEOFF", "SSIG", "HEALTH", "P-CME"]
+
+
+def test_add_task_to_a_project_that_doesnt_exist_or_is_ambiguous_says_so(tmp_path):
+    ops, _, todoist = make_her_ops(tmp_path)
+    assert ops.add_task("lift", project="gym") == ("no project called 'gym'. yours: Inbox, One-Off Tasks, Areas, Clubs, "
+                                                   "SSIG, Energy Club, Health")
+    assert ops.add_task("lift", project="club") == "which project? Clubs, Energy Club"
+    assert todoist.all_tasks() == []
 
 
 def test_add_task_rejects_bad_dates(tmp_path):

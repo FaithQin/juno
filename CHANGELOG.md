@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-06
+- Outlook meetings are added to the Stanford calendar on their own (tentative invites too), with a text listing what
+  was added or linked; a heads-up 30 min before each Outlook meeting (read from Google, so series and her own copies
+  work). The job never waits on another question again. Why: the Human Capital interview (Oct 6) never reached her;
+  Outlook's question had been stuck silently behind an unanswered duplicates question since Sep 28.
+- `add_task` takes a Todoist project for tasks that aren't for a class ("one-off tasks", "ssig"); without one juno
+  asks which project. "Try out Instinct" added to One-Off Tasks by hand (juno had refused it twice).
+- Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 313 tests.
+
 ## 2026-10-04
 - Replies to a replaced question: a Telegram reply answers the waiting proposal only if the replied-to message was
   sent at or after it was asked (30 s clock slack; no timestamp → the model asks). A yes/no to an older version of the

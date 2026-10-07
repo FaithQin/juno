@@ -254,8 +254,35 @@ class ChatOps:
                     return code, rest
         return None, title
 
+    def _other_projects(self) -> list:
+        """Her Todoist projects outside the Classes tree (One-Off Tasks, SSIG, Health…), in her order."""
+        projects = [p for p in self.todoist.projects() if not getattr(p, "is_archived", False)]
+        by_id = {p.id: p for p in projects}
+
+        def in_classes(p) -> bool:
+            while p is not None:
+                if p.id in self.class_project_ids:
+                    return True
+                p = by_id.get(p.parent_id)
+            return False
+
+        return [p for p in projects if not in_classes(p)]
+
+    def _project(self, name: str) -> object | str:
+        """The project she named ("one-off tasks", "ssig"), or what to tell her when it isn't one."""
+        others = self._other_projects()
+        key = re.sub(r"[^a-z0-9]", "", name.lower())
+        squash = {p.id: re.sub(r"[^a-z0-9]", "", p.name.lower()) for p in others}
+        exact = [p for p in others if squash[p.id] == key]
+        found = exact or [p for p in others if key and key in squash[p.id]]
+        if len(found) == 1:
+            return found[0]
+        if found:
+            return "which project? " + ", ".join(p.name for p in found)
+        return f"no project called '{name}'. yours: " + ", ".join(p.name for p in others)
+
     def add_task(self, title: str, due: str | None = None, course: str | None = None, notes: str | None = None,
-                 duration: int | None = None, deadline: str | None = None) -> str:
+                 duration: int | None = None, deadline: str | None = None, project: str | None = None) -> str:
         code = None
         if course:
             code = self._course(course)
@@ -264,8 +291,16 @@ class ChatOps:
         title = title.strip()
         if not code:
             code, title = self._course_from_title(title)
+        if not code and project:
+            code = self._course(project)                    # a class named as the project
+        target = None
         if not code:
-            return f"which course is that for? ({self._courses_list()})"
+            if not project:                                 # she always picks where a non-class task goes (2026-10-06)
+                names = ", ".join(p.name for p in self._other_projects())
+                return f"which project is that for? a class ({self._courses_list()})" + (f" or one of: {names}" if names else "")
+            target = self._project(project)
+            if isinstance(target, str):
+                return target
         parsed = self._parse_due(due)
         if isinstance(parsed, str):
             return parsed
@@ -275,11 +310,14 @@ class ChatOps:
             if not DATE_RE.match(deadline.strip()):
                 return "error: deadline must be an ISO date (2026-10-08); ask if unsure"
             deadline_date = date.fromisoformat(deadline.strip())
-        content = f"{code}: {title}" if title else code
-        if code in self.project_by_course:          # the course's own sub-project, no section
-            project_id, section_id = self.project_by_course[code], None
-        else:                                       # legacy: its section inside Classes
-            project_id, section_id = self.classes_project_id, self.section_by_course.get(code)
+        if target is not None:                      # a project outside Classes: her title as she said it
+            content, project_id, section_id = title, target.id, None
+        else:
+            content = f"{code}: {title}" if title else code
+            if code in self.project_by_course:      # the course's own sub-project, no section
+                project_id, section_id = self.project_by_course[code], None
+            else:                                   # legacy: its section inside Classes
+                project_id, section_id = self.classes_project_id, self.section_by_course.get(code)
         extra: dict = {}
         if duration:
             extra["duration_minutes"] = int(duration)
@@ -295,7 +333,8 @@ class ChatOps:
             bits.append(duration_words(int(duration)))
         if deadline_date:
             bits.append(f"deadline {deadline_words(deadline_date, today=self._local(self.now()).date())}")
-        return f"added: {content} ({' · '.join(bits)})"
+        where = f" → {target.name}" if target is not None else ""
+        return f"added: {content} ({' · '.join(bits)}){where}"
 
     def _pick(self, query: str) -> object | str:
         matches = match_tasks(query, self._candidates(), sections=self.course_by_section,

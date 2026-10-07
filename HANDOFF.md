@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-04 (~10:50 PDT, after the reply-to-a-replaced-question fix)
+# Handoff — state as of 2026-10-06 (~17:45 PDT, after Outlook auto-add and tasks outside classes)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
@@ -12,10 +12,10 @@ what to do next. **Update it at the end of every working session.**
 | Canvas events → Stanford calendar | hourly | first-run proposal **re-asked once** at the next run (see Pending) |
 | Nudges: 8pm the evening before, 2h before | scan every 10 min | late ones say "i was offline"; a Todoist blip skips one scan quietly. **Planned work** (a Todoist deadline field, a duration, or "block" in the title) gets **one heads-up 10 min before a timed start** instead ("starting 3:00pm: … (1h · deadline thu)"). **Audited classes get none.** |
 | Morning brief | 07:00 daily | every dated Todoist task + calendars Stanford/TA/primary/StartX/Cal.com; waits ~10 min through a Todoist outage, then says so. Sections: **due today** (incl. planned work whose Todoist deadline is today) / **planned today** / due tomorrow / overdue ("planned fri" for missed plans); audit tasks tagged "(audit)" |
-| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it, **only if that message was sent after the waiting question was asked** (a reply to an older, replaced question gets "nothing done: that question was replaced on …" + the current one, in code; 2026-10-04); every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks; `color_event` and `add_event(color=)` with her scheme applied automatically |
+| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it, **only if that message was sent after the waiting question was asked** (a reply to an older, replaced question gets "nothing done: that question was replaced on …" + the current one, in code; 2026-10-04); every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks, and (2026-10-06) a `project` for tasks outside her classes ("one-off tasks", "ssig"; without one it asks which); `color_event` and `add_event(color=)` with her scheme applied automatically |
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-10-02), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
-| **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`; new items (incl. tentative invites) proposed, yes copies with all details; `sync_now("outlook")`; `assistant outlook --print` |
+| **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`. **Since 2026-10-06 (code; deploy status in Pending):** new items (incl. tentative invites) are **added without asking** and juno texts what it added or linked; items she said no to before stay off; ended meetings skipped; **heads-up 30 min before each Outlook meeting** (read from Google, so series and her own copies work). Never waits on another question. `sync_now("outlook")`; `assistant outlook --print`. `docs/13-outlook-auto-add-and-projects.md` |
 | **Duplicate check** | after every hourly Canvas sync + "check for duplicates" | proposed for deletion (undoable, links and **her notes** move to the kept task); keeps the task that ticks on submission. **Narrowed 2026-10-03:** same title in a project with due dates ≤ 1 day apart, *except* the same clock time on different days (a habit); a shared assignment link only with the same title or both names just the assignment's name reworded (`assignment_named`: "Lab 1 prelab" = "Prelab 1", work blocks never); Canvas-Gradescope twins by id. A pending duplicates question it no longer finds withdraws itself. `docs/10-duplicates.md` §4, `docs/11-…` |
 | **Classes** (`courses.yaml`, 2026-10-03) | — | **Graded:** ENGR 40M, CME 102, EE 100 (synced from Canvas), CS 106B (Paperless/Gradescope; its Canvas site is empty), **EE 160A** (added; no Canvas/Gradescope/Ed site yet). **Audits** (`audit: true`: known for chat/Ed/Todoist, never synced, never nudged): EE 227 (alias CS 227A), EE 260A, AA 274A (alias AA 174A, no Todoist project). **Dropped:** MATSCI 88Q (Sep 30), EE 310 (Oct 2; its archived project still holds 3 open tasks, invisible to juno). Each class's tasks live in its sub-project under Classes (`6cXPJPmRH6GF2MPr`). After the deploy: `assistant check` 7 sub-projects ok + AA 274A "audit, no Todoist project", 95 active class tasks; dry-run sync read only the 3 graded Canvas courses, "nothing to change" |
 | **Class check** | daily 09:30 | texts once about a Canvas course or a Todoist project under Classes that `courses.yaml` doesn't know, or a synced course Canvas no longer lists; quiet when nothing changed (it found nothing on 2026-10-03). `course_watch.py`; state `kv["course_watch_seen"]` |
@@ -44,28 +44,23 @@ what to do next. **Update it at the end of every working session.**
 - Details and reasoning: `docs/07-hardening.md`; decisions: `DECISIONS.md` (2026-09-24 night).
 
 ## Pending right now
-- **Duplicates question for Faith, sent 2026-10-03 23:17 PDT** by the first hourly check on the narrowed rule (verified
-  on the server: `pending_job` asked_at 2026-10-04T06:17:12Z, no errors in the log). It **replaced the stale Sep 28
-  question** (Breakfast / CME Pset1 work blocks, all 6 tasks done; nothing deleted). The rule finds exactly these two
-  pairs among her 280 active tasks (read-only check), both of a kind she chose to be asked about:
-  - "ENGR 40M: Lab 1 prelab (Gradescope)" (hers, with notes, due Sun Oct 4 11am) as a copy of "ENGR 40M: Prelab 1
-    (Gradescope)" (made 2026-10-03 17:28 PDT by a sync, linked to Gradescope 8769171, not adopted, due Mon Oct 5 6pm). Yes
-    keeps the linked one and moves her notes onto it; her Sunday 11am date is lost (the kept task keeps Mon 6pm).
-    **Unchecked:** why the Gradescope match question (`gradescope_match`) didn't ask about her "Lab 1 prelab" before
-    this twin was made. Its rule (same number, pre+lab words, due within 2 days) should have paired them; her task was
-    edited at 21:42 PDT, so its title or date may have been different at 17:28. Worth a look before the next lab.
-  - "EE 160A: HW1 (due Fri Oct 9, week 3)" (made 2026-10-03 21:33 PDT, undated, with notes) as a copy of "EE 160A: HW1
-    (Gradescope)" (Oct 1, due Fri Oct 9 11:59pm). Neither is synced (EE 160A has been in `courses.yaml` since the 2026-10-03
-    22:17 deploy, but it has no Canvas or Gradescope site to sync from); the older is kept.
-  Both pairs appeared within minutes of each other on Oct 3 ~21:30–21:42 PDT, while someone was editing these tasks
-  (likely Faith or another assistant), so she may already be mid-cleanup. Outlook and Gradescope-match questions still
-  queue behind this one until she answers.
-  **The reply gap is closed (2026-10-04, `05d654c`):** a Telegram reply answers the waiting question only if the
-  replied-to message was sent at or after its `asked_at` (30 s clock slack). A yes/no to the old Sep 28 message (or a
-  quoted line of it) now gets "nothing done: that question was replaced on sat oct 3, 11:17pm" plus the current
-  question as its own message; any other reply to a message from before the question can't call `answer_proposal`.
-  Deployed 10:39 PDT: container up, 8 jobs scheduled, no errors; the duplicates question above is still pending
-  (`asked_at` 06:17:12Z), so her answer to it (a reply to that message, or a bare yes/no) works as before.
+- **2026-10-06 incident: the Human Capital interview (Tue Oct 6, 1:45pm, a tentative Outlook invite) never reached Faith.**
+  The Outlook job could only *ask*, and its question had waited silently behind an unanswered duplicates question since
+  Sep 28; the brief and nudges never read Outlook. Fixed in code (auto-add + 30-min heads-up, Faith's choice); see
+  `docs/13-outlook-auto-add-and-projects.md`. **Deploy status: see the closing note of the 2026-10-06 session below.**
+  First run after deploy (read-only preview at ~17:20 PDT): links "Faith Qin and Monroe Kennedy" (Wed Oct 7 2pm) to her
+  "ARMLab interview: Prof. Kennedy (ME 191)", adds "ChemE Colloquium…" Mon Oct 12 and Mon Oct 19 4:30pm (tentative).
+  "Faith + Nathan // Intro Call" (Wed Oct 7 1:30pm) stays off: she said no to it in an earlier Outlook batch. Told her.
+- **"Try out Instinct"** was added to One-Off Tasks (due Oct 6) by hand via the Todoist MCP, at her request; juno had
+  answered "which course is that for?" twice that morning.
+- **Duplicates question still waiting** (replaced again 2026-10-04 21:39Z, now 1 pair): "EE 160A: HW1 (due Fri Oct 9,
+  week 3)" as a copy of "EE 160A: HW1 (Gradescope)". Gradescope-match and Canvas-calendar questions still queue behind
+  it **silently** (Outlook no longer does). The ENGR 40M prelab pair from Oct 3 is gone from it (resolved by hand?).
+  **Unchecked:** why `gradescope_match` didn't ask about her "Lab 1 prelab" before the Gradescope twin was made on Oct 3.
+- **Reply gap closed (2026-10-04, `05d654c`, deployed):** a Telegram reply answers the waiting question only if the
+  replied-to message was sent at or after its `asked_at`; a yes/no to an older version gets "nothing done: that question
+  was replaced on …" plus the current one; any reply to an earlier message can't call `answer_proposal`. Faith asked
+  about the cost of that wide block on 2026-10-06 and chose to keep it.
 - **Verify on the next proactive text** (e.g. the 07:00 brief on Sun Oct 4): rows appear in `messages` with
   `conversation_id = 'telegram:outbox'`, and a reply to that text in Telegram arrives as "(replying to your message from …)".
   Both are covered by tests; neither has happened live yet. First planned-work heads-up expected Sun Oct 4 10:50am
@@ -129,20 +124,19 @@ what to do next. **Update it at the end of every working session.**
 - `data/browser/canvas.json` still exists on the Mac and server; unused now, harmless.
 
 ## Next candidates (Faith decides)
-0. Let juno change its own class list from chat ("add EE 101A as a class") instead of the class check pointing at
-   `courses.yaml`; and color Canvas/Outlook copies with the scheme too, if she wants.
-1. The Canvas-side exact-title question (above).
-2. A mixed answer to a multi-item question ("yes to the first, no to the second"); today it's all or nothing, for
-   match and duplicates questions alike (tonight's duplicates question has two pairs).
-3. Canvas API tools for the pages she names (grades, modules, files).
-4. History window (above); a `/help` command listing what juno can do.
-5. CS 106B course-site scrape (site was "under construction" on 2026-09-23).
-6. iMessage via Photon: needs a Node sidecar (Photon has no HTTP send API) or a Python path.
-7. Public repo: scrub Faith's email (assistant.yaml), ids (courses.yaml), personal details (RESEARCH/DECISIONS).
-8. Chromium sandbox hardening; narrow the nudge rule.
+0. **Let juno read and complete tasks outside classes.** `ChatOps._candidates` sees class tasks + p1/p2 anywhere, so
+   "done with try out instinct" (p4, One-Off Tasks) can't be found yet. Asked Faith on 2026-10-06 (see Pending).
+1. **No silent queue.** Gradescope-match and Canvas-calendar questions still wait without a word behind another
+   question; at least the brief should say "a question is waiting since …" (the Outlook incident's second cause).
+2. Let juno change its own class list from chat ("add EE 101A as a class"); color Canvas/Outlook copies with her scheme.
+3. The Canvas-side exact-title question (Pending, older notes).
+4. A mixed answer to a multi-item question ("yes to the first, no to the second"); today it's all or nothing.
+5. Canvas API tools for the pages she names (grades, modules, files).
+6. History window; a `/help` command listing what juno can do.
+7. CS 106B course-site scrape; iMessage via Photon; public-repo scrub; Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 305 passing).
+1. `uv sync && uv run pytest` (expect 313 passing).
 2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md` and `docs/12-replies-colors-planned-classes.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.

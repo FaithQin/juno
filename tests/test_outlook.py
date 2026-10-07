@@ -1,7 +1,9 @@
 """Outlook meetings → Google Calendar, from a published Outlook calendar link (ICS).
 
-Every new item on the Outlook calendar (invites arrive there as tentative) is proposed over
-Telegram; a yes copies it to the Stanford calendar with everything Outlook knows about it.
+Every new item on the Outlook calendar (invites arrive there as tentative) is copied to the
+Stanford calendar with everything Outlook knows about it, and juno texts what it added. Since
+2026-10-06 it no longer asks first: a question stuck behind another one hid an interview from her.
+A heads-up goes out 30 minutes before each Outlook meeting.
 """
 
 import json
@@ -184,26 +186,21 @@ def make_sync(tmp_path, feed: str, gcal_events=None):
     return sync, store, cal, out, box
 
 
-async def test_first_run_proposes_matches_and_new_items_then_copies_on_yes(tmp_path):
+async def test_new_meetings_are_added_and_her_own_copies_linked_without_asking(tmp_path):
     hand_made = Event("Faith / Tim intro", datetime(2026, 9, 25, 9, 0, tzinfo=TZ), datetime(2026, 9, 25, 9, 30, tzinfo=TZ), None, False, "Stanford")
     sync, store, cal, out, _ = make_sync(tmp_path, ics(TIM, SSIG, RETREAT, OLD), [hand_made])
     await sync.run()
-    await sync.run()                                                            # still unanswered: asked once
-    assert len(out.sent) == 1
-    text = out.sent[0]
-    assert text.splitlines()[0] == "outlook: 4 upcoming meetings aren't on your google calendar yet."
-    assert "looks like one you already have:\n- Faith <> Tim (fri sep 25 9:00am) → Faith / Tim intro" in text
-    assert "new (i'd add to Stanford):" in text
-    assert "- SSIG Weekly Leadership Sync, weekly from wed sep 30 8:30–9:30pm" in text
-    assert "- SSIG Weekly Leadership Sync, thu oct 8 8:30–9:30pm (moved occurrence)" in text
-    assert "- SSS Retreat, sat oct 10 all day (free)" in text
-    assert text.endswith("reply yes to add them, or no to skip these (i'll still ask about new ones)")
-    assert len(cal.events) == 1                                                 # nothing written yet
-
-    payload = json.loads(store.kv_get("pending_job"))["payload"]
-    assert await sync.approve(payload, True) == "linked 1 existing event, added 3 to Stanford"
+    assert out.sent == [
+        "outlook: added 3 to your Stanford calendar:\n"
+        "- SSIG Weekly Leadership Sync, weekly from wed sep 30 8:30–9:30pm\n"
+        "- SSIG Weekly Leadership Sync, thu oct 8 8:30–9:30pm (moved occurrence)\n"
+        "- SSS Retreat, sat oct 10 all day (free)\n"
+        "already on your calendar, now linked:\n"
+        "- Faith <> Tim (fri sep 25 9:00am) → Faith / Tim intro\n"
+        "i'll text you 30 min before each meeting. to take one off google, say delete and which one"]
+    assert store.pending_job() is None                                          # nothing to answer
     links = {k[1]: v for k, v in store.links().items() if k[0] == "outlook_event"}
-    assert len(links) == 4
+    assert len(links) == 4 and len(cal.events) == 4
     series = next(e for e in cal.events.values() if e.title == "SSIG Weekly Leadership Sync" and e.start.day == 30)
     body = cal.bodies[series.id]
     assert body["recurrence"][0] == "RRULE:FREQ=WEEKLY;BYDAY=WE" and series.calendar_id == "cal-stanford"
@@ -217,24 +214,35 @@ async def test_first_run_proposes_matches_and_new_items_then_copies_on_yes(tmp_p
     assert len(out.sent) == 1 and len(cal.events) == 4
 
 
-async def test_declined_items_are_not_asked_again_but_a_new_invite_is(tmp_path):
+async def test_a_tentative_invite_is_added_too(tmp_path):
+    sync, store, cal, out, _ = make_sync(tmp_path, ics(TIM))
+    await sync.run()
+    assert out.sent[0].splitlines()[:2] == ["outlook: added 1 to your Stanford calendar:", "- Faith <> Tim, fri sep 25 9:00–9:30am (tentative)"]
+    (tim,) = cal.events.values()
+    assert cal.bodies[tim.id]["description"].endswith("from outlook, tentative (not responded to)")
+
+
+async def test_meetings_she_said_no_to_stay_off_but_new_ones_are_added(tmp_path):
     sync, store, cal, out, box = make_sync(tmp_path, ics(TIM))
+    store.kv_set("outlook_declined", json.dumps(["tim-uid"]))                  # her "no" from when juno still asked
     await sync.run()
-    payload = json.loads(store.kv_get("pending_job"))["payload"]
-    assert await sync.approve(payload, False) == "ok, skipped those. i'll only ask about new outlook meetings from now on"
-    await sync.run()
-    assert len(out.sent) == 1 and cal.events == {}
+    assert out.sent == [] and cal.events == {}
     box["ics"] = ics(TIM, RETREAT)
     await sync.run()
-    assert len(out.sent) == 2
-    assert out.sent[1].splitlines()[0] == "outlook: 1 upcoming meeting isn't on your google calendar yet."
-    assert "SSS Retreat" in out.sent[1] and "Faith <> Tim" not in out.sent[1]
+    assert len(out.sent) == 1 and "SSS Retreat" in out.sent[0] and "Faith <> Tim" not in out.sent[0]
+    assert [e.title for e in cal.events.values()] == ["SSS Retreat"]
 
 
-async def test_after_approval_moves_are_applied_and_disappearances_reported_once(tmp_path):
+async def test_a_meeting_that_already_ended_is_not_added(tmp_path):
+    earlier = TIM.replace("tim-uid", "early-uid").replace("20260925T090000", "20260924T080000").replace("20260925T093000", "20260924T090000")
+    sync, store, cal, out, _ = make_sync(tmp_path, ics(earlier))               # 8–9am today; it's 10am
+    await sync.run()
+    assert out.sent == [] and cal.events == {}
+
+
+async def test_moves_are_applied_and_disappearances_reported_once(tmp_path):
     sync, store, cal, out, box = make_sync(tmp_path, ics(TIM, RETREAT))
     await sync.run()
-    await sync.approve(json.loads(store.kv_get("pending_job"))["payload"], True)
     box["ics"] = ics(TIM.replace("T090000", "T100000").replace("T093000", "T103000"), RETREAT)
     await sync.run()
     tim = next(e for e in cal.events.values() if e.title == "Faith <> Tim")
@@ -249,14 +257,32 @@ async def test_after_approval_moves_are_applied_and_disappearances_reported_once
     assert len(out.sent) == n and len(cal.deleted) == 0                        # reported once; never deleted
 
 
-async def test_quiet_run_returns_the_question_for_sync_now_and_a_dead_feed_is_quiet(tmp_path):
+async def test_quiet_run_adds_and_returns_the_text_for_sync_now_and_a_dead_feed_is_quiet(tmp_path):
     sync, store, cal, out, box = make_sync(tmp_path, ics(TIM))
     text = await sync.run(quiet=True)
-    assert text.startswith("outlook: 1 upcoming meeting") and out.sent == []
-    assert store.pending_job()["kind"] == "outlook_new"
+    assert text.startswith("outlook: added 1 to your Stanford calendar:") and out.sent == []
+    assert len(cal.events) == 1 and store.pending_job() is None
     box["fail"] = True
     assert await sync.run() is None and out.sent == []
     assert await sync.run(quiet=True) == "outlook: couldn't fetch the calendar (ConnectionError)"
+
+
+async def test_a_failed_copy_is_left_for_the_next_run(tmp_path):
+    sync, store, cal, out, _ = make_sync(tmp_path, ics(TIM, RETREAT))
+    real_create = cal.create_event
+
+    def flaky(calendar_id, body):
+        if body["summary"] == "Faith <> Tim":
+            raise ConnectionError("google is down")
+        return real_create(calendar_id, body)
+
+    cal.create_event = flaky
+    await sync.run()
+    assert out.sent[0].splitlines()[:2] == ["outlook: added 1 to your Stanford calendar:", "- SSS Retreat, sat oct 10 all day (free)"]
+    cal.create_event = real_create
+    await sync.run()
+    assert out.sent[1].splitlines()[1] == "- Faith <> Tim, fri sep 25 9:00–9:30am (tentative)"
+    assert len(cal.events) == 2
 
 
 def test_an_occurrence_edited_but_not_moved_is_left_to_the_series():
@@ -278,11 +304,46 @@ async def test_a_series_claims_a_hand_made_event_before_its_moved_occurrence_doe
     assert "weekly from" not in text and "(moved occurrence)" in text            # the series is the match; the occurrence is new
 
 
-async def test_waits_while_another_jobs_proposal_is_pending(tmp_path):
-    """One proposal at a time: a bare yes must never land on the wrong question."""
+async def test_adds_even_while_another_question_is_waiting(tmp_path):
+    """The bug of 2026-10-06: a duplicates question nobody answered kept every Outlook meeting off
+    her calendar for over a week, silently. Adding never waits on a question."""
     sync, store, cal, out, box = make_sync(tmp_path, ics(TIM))
-    store.propose_job("calendar_first_run", {"digest": "x"}, "canvas calendar: 10 events. yes or no?", at=NOW)
+    store.propose_job("duplicates", {"digest": "x"}, "todoist: 1 pair looks like duplicates.", at=NOW)
     await sync.run()
-    assert out.sent == [] and store.pending_job()["kind"] == "calendar_first_run"
-    text = await sync.run(quiet=True)
-    assert text == "outlook: 1 meeting to propose, once you've answered the canvas calendar proposal"
+    assert len(cal.events) == 1 and out.sent[0].startswith("outlook: added 1")
+    assert store.pending_job()["kind"] == "duplicates"
+
+
+async def test_a_question_from_when_juno_still_asked_is_dropped_once_its_meetings_are_added(tmp_path):
+    sync, store, cal, out, box = make_sync(tmp_path, ics(TIM))
+    store.propose_job("outlook_new", {"digest": "x", "pairs": [], "new": []}, "outlook: 1 upcoming meeting …", at=NOW)
+    await sync.run()
+    assert store.pending_job() is None and len(cal.events) == 1
+
+
+# -- the heads-up -------------------------------------------------------------------------------
+
+async def test_a_heads_up_30_minutes_before_each_outlook_meeting(tmp_path):
+    hand_made = Event("Faith / Tim intro", datetime(2026, 9, 25, 9, 0, tzinfo=TZ), datetime(2026, 9, 25, 9, 30, tzinfo=TZ),
+                      "Gates 104", False, "Stanford")
+    other = Event("Lunch with Alanood", datetime(2026, 9, 25, 9, 15, tzinfo=TZ), datetime(2026, 9, 25, 10, 0, tzinfo=TZ), None, False, "Stanford")
+    sync, store, cal, out, _ = make_sync(tmp_path, ics(TIM, RETREAT), [hand_made, other])
+    await sync.run()                                                            # tim links to her copy; the retreat is added
+    out.sent.clear()
+    assert await sync.heads_up(now=datetime(2026, 9, 25, 8, 25, tzinfo=TZ)) == []          # 35 min out: not yet
+    sent = await sync.heads_up(now=datetime(2026, 9, 25, 8, 35, tzinfo=TZ))
+    assert sent == ["in 25 min: Faith / Tim intro, 9:00–9:30am · Gates 104"] == out.sent   # her copy's title and place
+    assert await sync.heads_up(now=datetime(2026, 9, 25, 8, 45, tzinfo=TZ)) == []          # once; lunch isn't from outlook
+    assert await sync.heads_up(now=datetime(2026, 10, 9, 23, 45, tzinfo=TZ)) == []         # never for an all-day item
+
+
+async def test_every_occurrence_of_an_outlook_series_gets_a_heads_up(tmp_path):
+    sync, store, cal, out, _ = make_sync(tmp_path, ics(SSIG))
+    await sync.run()
+    series = next(e for e in cal.events.values() if e.start.day == 30)
+    for day in (14, 28):                                                        # what google lists for the series
+        cal.events[f"{series.id}_{day}"] = Event("SSIG Weekly Leadership Sync", datetime(2026, 10, day, 20, 30, tzinfo=TZ),
+                                                 datetime(2026, 10, day, 21, 30, tzinfo=TZ), None, False, "Stanford",
+                                                 id=f"{series.id}_{day}", calendar_id="cal-stanford", recurring_id=series.id)
+    assert await sync.heads_up(now=datetime(2026, 10, 14, 20, 5, tzinfo=TZ)) == ["in 25 min: SSIG Weekly Leadership Sync, 8:30–9:30pm"]
+    assert await sync.heads_up(now=datetime(2026, 10, 28, 20, 10, tzinfo=TZ)) == ["in 20 min: SSIG Weekly Leadership Sync, 8:30–9:30pm"]

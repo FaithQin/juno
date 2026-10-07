@@ -274,6 +274,10 @@ async def serve(rt: Runtime) -> None:
                 await outlook.run()
             except Exception:
                 log.exception("outlook sync failed")
+            try:
+                await outlook.heads_up()       # from google, so a slow outlook feed never costs her the reminder
+            except Exception:
+                log.exception("outlook heads-up failed")
     else:
         log.info("OUTLOOK_ICS_URL is empty: outlook → google calendar is off")
 
