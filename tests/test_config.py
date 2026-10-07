@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from datetime import date
+
 from assistant.config import AppConfig, Settings, load_app_config, parse_chat_ids
 
 
@@ -36,6 +38,8 @@ def test_outlook_config_and_setting_defaults(monkeypatch):
     cfg = AppConfig()
     assert cfg.outlook.target == "Stanford" and cfg.outlook.every_minutes == 10 and cfg.outlook.skip == []
     assert "ChemE" in load_app_config().outlook.skip                         # she left ChemE (2026-10-06)
+    assert cfg.calendar.quarter_ends == []
+    assert load_app_config().calendar.quarter_ends[:2] == [date(2026, 12, 11), date(2027, 3, 19)]   # where repeats stop
     monkeypatch.setenv("CANVAS_TOKEN", "x")
     monkeypatch.setenv("TODOIST_TOKEN", "y")
     assert Settings(_env_file=None).outlook_ics_url == ""

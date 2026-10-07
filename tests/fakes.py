@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from assistant.brief import Event
 
@@ -189,6 +190,8 @@ class FakeCalendar:
 
     def get_event(self, calendar_id, event_id):
         """Like Google: a dict. An id that names a series answers with its first occurrence's fields."""
+        if event_id in self.bodies:                       # one juno created: Google returns what it was given, plus the id
+            return {"id": event_id, **self.bodies[event_id]}
         e = self.events.get(event_id) or next(x for x in self.events.values() if x.recurring_id == event_id)
         return {"id": event_id, "summary": e.title, "colorId": e.color_id}
 
@@ -196,8 +199,8 @@ class FakeCalendar:
         name = next((n for n, i in self.names.items() if i == calendar_id), calendar_id)
         start = datetime.fromisoformat(body["start"]["dateTime"]) if "dateTime" in body["start"] else None
         end = datetime.fromisoformat(body["end"]["dateTime"]) if "dateTime" in body["end"] else None
-        if start is None:   # all-day
-            start = datetime.fromisoformat(body["start"]["date"]).replace(tzinfo=timezone.utc)
+        if start is None:   # all-day: local midnight, as gcal.events_from_api reads it in her timezone
+            start = datetime.fromisoformat(body["start"]["date"]).replace(tzinfo=ZoneInfo("America/Los_Angeles"))
         e = self._add(Event(body["summary"], start, end, body.get("location"), "date" in body["start"], name, calendar_id=calendar_id,
                             description=body.get("description"), color_id=body.get("colorId")))
         self.bodies[e.id] = body

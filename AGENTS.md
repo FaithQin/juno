@@ -26,7 +26,7 @@ Calendar, a Telegram chat brain with a real browser, nudges and a morning brief.
 
 ## Run, test, deploy
 ```bash
-uv sync && uv run pytest                      # 327 tests, no network
+uv sync && uv run pytest                      # 338 tests, no network
 uv run assistant chat "what's due today"      # talk to juno from the terminal (separate conversation)
 uv run assistant sync --dry-run -v            # what the Canvas sync would change
 scripts/deploy.sh root@165.232.146.165        # ship to the server (rsyncs code, .env, saved browser logins)

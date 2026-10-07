@@ -147,7 +147,7 @@ def build_runtime(*, conversation_id: str = "telegram") -> Runtime:
 
     ops = ChatOps(
         store=store, todoist=todoist, calendar=calendar, tz=settings.tz,
-        **course_kwargs(courses_cfg), colors=color_scheme(app_cfg, courses_cfg),
+        **course_kwargs(courses_cfg), colors=color_scheme(app_cfg, courses_cfg), quarter_ends=app_cfg.calendar.quarter_ends,
         sections=courses_cfg.course_sections(sections),
         course_projects=courses_cfg.course_projects(),
         classes_project_id=project.id, calendar_names=app_cfg.brief.calendars, now=now_utc,

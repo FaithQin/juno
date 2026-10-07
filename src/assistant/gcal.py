@@ -55,17 +55,19 @@ def events_from_api(items: list[dict], *, calendar: str, tz: ZoneInfo, calendar_
     return events
 
 
-def event_body(*, title: str, start: datetime, end: datetime | None = None, location: str | None = None,
+def event_body(*, title: str, start: datetime | date, end: datetime | date | None = None, location: str | None = None,
                description: str | None = None, canvas_id: int | None = None, source_url: str | None = None,
-               color_id: str | None = None) -> dict:
-    """The JSON Google expects for insert/patch. End defaults to one hour after start."""
-    end = end or start + timedelta(hours=1)
-    tzname = str(start.tzinfo) if isinstance(start.tzinfo, ZoneInfo) else "America/Los_Angeles"
-    body: dict = {
-        "summary": title,
-        "start": {"dateTime": start.isoformat(timespec="seconds"), "timeZone": tzname},
-        "end": {"dateTime": end.isoformat(timespec="seconds"), "timeZone": tzname},
-    }
+               color_id: str | None = None, recurrence: list[str] | None = None) -> dict:
+    """The JSON Google expects for insert/patch. End defaults to one hour after start.
+    A date with no time is an all-day event; its `end` is the last day, inclusive (Google's is exclusive)."""
+    if isinstance(start, datetime):
+        end = end or start + timedelta(hours=1)
+        tzname = str(start.tzinfo) if isinstance(start.tzinfo, ZoneInfo) else "America/Los_Angeles"
+        times = {"start": {"dateTime": start.isoformat(timespec="seconds"), "timeZone": tzname},
+                 "end": {"dateTime": end.isoformat(timespec="seconds"), "timeZone": tzname}}
+    else:
+        times = {"start": {"date": start.isoformat()}, "end": {"date": ((end or start) + timedelta(days=1)).isoformat()}}
+    body: dict = {"summary": title, **times}
     if location:
         body["location"] = location
     if description:
@@ -76,6 +78,8 @@ def event_body(*, title: str, start: datetime, end: datetime | None = None, loca
         body["source"] = {"title": "Canvas", "url": source_url}
     if color_id:
         body["colorId"] = color_id
+    if recurrence:
+        body["recurrence"] = list(recurrence)
     return body
 
 
