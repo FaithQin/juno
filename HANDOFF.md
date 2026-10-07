@@ -3,7 +3,7 @@
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
 
-## What is live (verified on the server; last deploy `05d654c`, 2026-10-04 10:39 PDT)
+## What is live (verified on the server; last deploy `2f7ca39`, 2026-10-06 17:17 PDT)
 | Piece | Cadence | Notes |
 |---|---|---|
 | Canvas → Todoist sync | hourly | adopted 52 hand-made tasks on 2026-09-22; batches same-day quizzes; retries transient errors |
@@ -15,7 +15,7 @@ what to do next. **Update it at the end of every working session.**
 | Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it, **only if that message was sent after the waiting question was asked** (a reply to an older, replaced question gets "nothing done: that question was replaced on …" + the current one, in code; 2026-10-04); every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks, and (2026-10-06) a `project` for tasks outside her classes ("one-off tasks", "ssig"; without one it asks which); `color_event` and `add_event(color=)` with her scheme applied automatically |
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-10-02), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
-| **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`. **Since 2026-10-06 (code; deploy status in Pending):** new items (incl. tentative invites) are **added without asking** and juno texts what it added or linked; items she said no to before stay off; ended meetings skipped; **heads-up 30 min before each Outlook meeting** (read from Google, so series and her own copies work). Never waits on another question. `sync_now("outlook")`; `assistant outlook --print`. `docs/13-outlook-auto-add-and-projects.md` |
+| **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`. **Since 2026-10-06:** new items (incl. tentative invites) are **added without asking** and juno texts what it added or linked; items she said no to before stay off; ended meetings skipped; **heads-up 30 min before each Outlook meeting** (read from Google, so series and her own copies work). Never waits on another question. `sync_now("outlook")`; `assistant outlook --print`. `docs/13-outlook-auto-add-and-projects.md` |
 | **Duplicate check** | after every hourly Canvas sync + "check for duplicates" | proposed for deletion (undoable, links and **her notes** move to the kept task); keeps the task that ticks on submission. **Narrowed 2026-10-03:** same title in a project with due dates ≤ 1 day apart, *except* the same clock time on different days (a habit); a shared assignment link only with the same title or both names just the assignment's name reworded (`assignment_named`: "Lab 1 prelab" = "Prelab 1", work blocks never); Canvas-Gradescope twins by id. A pending duplicates question it no longer finds withdraws itself. `docs/10-duplicates.md` §4, `docs/11-…` |
 | **Classes** (`courses.yaml`, 2026-10-03) | — | **Graded:** ENGR 40M, CME 102, EE 100 (synced from Canvas), CS 106B (Paperless/Gradescope; its Canvas site is empty), **EE 160A** (added; no Canvas/Gradescope/Ed site yet). **Audits** (`audit: true`: known for chat/Ed/Todoist, never synced, never nudged): EE 227 (alias CS 227A), EE 260A, AA 274A (alias AA 174A, no Todoist project). **Dropped:** MATSCI 88Q (Sep 30), EE 310 (Oct 2; its archived project still holds 3 open tasks, invisible to juno). Each class's tasks live in its sub-project under Classes (`6cXPJPmRH6GF2MPr`). After the deploy: `assistant check` 7 sub-projects ok + AA 274A "audit, no Todoist project", 95 active class tasks; dry-run sync read only the 3 graded Canvas courses, "nothing to change" |
 | **Class check** | daily 09:30 | texts once about a Canvas course or a Todoist project under Classes that `courses.yaml` doesn't know, or a synced course Canvas no longer lists; quiet when nothing changed (it found nothing on 2026-10-03). `course_watch.py`; state `kv["course_watch_seen"]` |
@@ -47,10 +47,15 @@ what to do next. **Update it at the end of every working session.**
 - **2026-10-06 incident: the Human Capital interview (Tue Oct 6, 1:45pm, a tentative Outlook invite) never reached Faith.**
   The Outlook job could only *ask*, and its question had waited silently behind an unanswered duplicates question since
   Sep 28; the brief and nudges never read Outlook. Fixed in code (auto-add + 30-min heads-up, Faith's choice); see
-  `docs/13-outlook-auto-add-and-projects.md`. **Deploy status: see the closing note of the 2026-10-06 session below.**
+  `docs/13-outlook-auto-add-and-projects.md`. **Deployed `2f7ca39` 2026-10-06 17:17 PDT** and redeployed with the fix below. **First live adds, 17:18 PDT**,
+  came from her chat "check everywhere" (`sync_now("all")`, a quiet run): copied the two ChemE colloquiums (Oct 12, Oct 19),
+  linked "Faith Qin and Monroe Kennedy" → her "ARMLab interview" and "Faith + Nathan // Intro Call" → her own
+  "Faith + Nathan // Intro Call (Andrews Cooper)" (made on Google that afternoon). The model never relayed that list, so
+  adds and moves are now **always texted**, quiet or not (`run()`); 315 tests.
   First run after deploy (read-only preview at ~17:20 PDT): links "Faith Qin and Monroe Kennedy" (Wed Oct 7 2pm) to her
   "ARMLab interview: Prof. Kennedy (ME 191)", adds "ChemE Colloquium…" Mon Oct 12 and Mon Oct 19 4:30pm (tentative).
-  "Faith + Nathan // Intro Call" (Wed Oct 7 1:30pm) stays off: she said no to it in an earlier Outlook batch. Told her.
+  "Faith + Nathan // Intro Call" (Wed Oct 7 1:30pm): she had said no to it in an earlier batch; on 2026-10-06 she asked
+  for it, so its uid was taken off `outlook_declined` (10 → 9) just before the deploy and the first run copies it too.
 - **"Try out Instinct"** was added to One-Off Tasks (due Oct 6) by hand via the Todoist MCP, at her request; juno had
   answered "which course is that for?" twice that morning.
 - **Duplicates question still waiting** (replaced again 2026-10-04 21:39Z, now 1 pair): "EE 160A: HW1 (due Fri Oct 9,

@@ -344,8 +344,10 @@ class OutlookSync:
             linked, added = await self._copy([(ev, m.calendar_id, m.id, m.title) for ev, m in pairs], fresh)
             added_text = self._added_text(linked, added)
 
-        if added_text and not quiet:
+        if added_text:                      # what lands on her calendar is always texted, even from a chat-run sync
             await self.send(added_text)
+            if quiet:
+                added_text = "(already texted her this) " + added_text
         report = None
         if moved or gone:
             lines = ["outlook"]
@@ -356,8 +358,9 @@ class OutlookSync:
                 lines.append("gone from your outlook calendar (left on google; say 'delete it' if it's really off):")
                 lines += [f"  - {x}" for x in gone]
             report = "\n".join(lines)
-            if not quiet:
-                await self.send(report)
+            await self.send(report)            # a change to her calendar is always texted, like an add
+            if quiet:
+                report = "(already texted her this) " + report
         return "\n\n".join(t for t in (added_text, report) if t) or None
 
     async def _copy(self, pairs: list[tuple[OutlookEvent, str, str, str]], fresh: list[OutlookEvent]):

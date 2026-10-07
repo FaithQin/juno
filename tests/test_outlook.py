@@ -256,15 +256,22 @@ async def test_moves_are_applied_and_disappearances_reported_once(tmp_path):
     n = len(out.sent)
     await sync.run()
     assert len(out.sent) == n and len(cal.deleted) == 0                        # reported once; never deleted
+    box["ics"] = ics(TIM)                                                       # back to 9am, found by a sync run from chat
+    text = await sync.run(quiet=True)
+    assert out.sent[-1] == "outlook\nmoved 1:\n  - Faith <> Tim → fri sep 25 9:00–9:30am"
+    assert text == "(already texted her this) " + out.sent[-1]
 
 
-async def test_quiet_run_adds_and_returns_the_text_for_sync_now_and_a_dead_feed_is_quiet(tmp_path):
+async def test_a_run_from_chat_still_texts_what_it_added_and_a_dead_feed_is_quiet(tmp_path):
+    """2026-10-06: "check everywhere" ran the Outlook sync from chat (quiet); the model got the list of
+    added meetings and never told her. What lands on her calendar is always texted."""
     sync, store, cal, out, box = make_sync(tmp_path, ics(TIM))
     text = await sync.run(quiet=True)
-    assert text.startswith("outlook: added 1 to your Stanford calendar:") and out.sent == []
+    assert len(out.sent) == 1 and out.sent[0].startswith("outlook: added 1 to your Stanford calendar:")
+    assert text == "(already texted her this) " + out.sent[0]
     assert len(cal.events) == 1 and store.pending_job() is None
     box["fail"] = True
-    assert await sync.run() is None and out.sent == []
+    assert await sync.run() is None and len(out.sent) == 1                    # a dead feed says nothing
     assert await sync.run(quiet=True) == "outlook: couldn't fetch the calendar (ConnectionError)"
 
 

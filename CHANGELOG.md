@@ -8,6 +8,9 @@
 - `add_task` takes a Todoist project for tasks that aren't for a class ("one-off tasks", "ssig"); without one juno
   asks which project. "Try out Instinct" added to One-Off Tasks by hand (juno had refused it twice).
 - Complete, move, edit, snooze and delete find a task in any Todoist project (was: class tasks + p1/p2 only).
+- Outlook adds and moves are texted even when the sync was started from chat (her "check everywhere" at 5:18pm
+  added two meetings and the model never said so). First live run: 2 ChemE colloquiums copied; Kennedy interview and
+  the Nathan intro call linked to events already on her Google calendar.
 - Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 315 tests.
 
 ## 2026-10-04

@@ -37,6 +37,12 @@ a heads-up.** Meetings she said "no" to back when juno asked stay off.
 - texts one message: "outlook: added 2 to your Stanford calendar: … already on your calendar, now
   linked: … i'll text you 30 min before each meeting. to take one off google, say delete and which one".
 
+**Always texted, whoever started it.** The first adds after the deploy came from her own chat ("check
+everywhere" → `sync_now("all")`), which runs the sync *quietly* and hands its report to the model.
+The model answered about psets and never mentioned the two meetings it had just put on her calendar.
+So an add, a link or a move is now always texted through `send`, and a quiet run's return value is
+marked "(already texted her this)" so the model doesn't need to repeat it.
+
 It never touches the question slot, so a question waiting elsewhere can't block it again. If a
 question from the old ask-first days is still out, it's dropped once its meetings are added.
 
