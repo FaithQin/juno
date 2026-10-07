@@ -3,7 +3,7 @@
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
 
-## What is live (verified on the server; last deploy `2f7ca39`, 2026-10-06 17:17 PDT)
+## What is live (verified on the server; last deploy `79a12be`, 2026-10-06 17:30 PDT)
 | Piece | Cadence | Notes |
 |---|---|---|
 | Canvas → Todoist sync | hourly | adopted 52 hand-made tasks on 2026-09-22; batches same-day quizzes; retries transient errors |
@@ -47,7 +47,7 @@ what to do next. **Update it at the end of every working session.**
 - **2026-10-06 incident: the Human Capital interview (Tue Oct 6, 1:45pm, a tentative Outlook invite) never reached Faith.**
   The Outlook job could only *ask*, and its question had waited silently behind an unanswered duplicates question since
   Sep 28; the brief and nudges never read Outlook. Fixed in code (auto-add + 30-min heads-up, Faith's choice); see
-  `docs/13-outlook-auto-add-and-projects.md`. **Deployed `2f7ca39` 2026-10-06 17:17 PDT** and redeployed with the fix below. **First live adds, 17:18 PDT**,
+  `docs/13-outlook-auto-add-and-projects.md`. **Deployed `2f7ca39` 2026-10-06 17:17 PDT**, redeployed `79a12be` 17:30 PDT with the fix below. **First live adds, 17:18 PDT**,
   came from her chat "check everywhere" (`sync_now("all")`, a quiet run): copied the two ChemE colloquiums (Oct 12, Oct 19),
   linked "Faith Qin and Monroe Kennedy" → her "ARMLab interview" and "Faith + Nathan // Intro Call" → her own
   "Faith + Nathan // Intro Call (Andrews Cooper)" (made on Google that afternoon). The model never relayed that list, so
