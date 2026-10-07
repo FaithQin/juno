@@ -3,7 +3,7 @@
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
 
-## What is live (verified on the server; last deploy `e21039a`, 2026-10-06 17:37 PDT)
+## What is live (verified on the server; last deploy `90c5843`, 2026-10-06 18:05 PDT)
 | Piece | Cadence | Notes |
 |---|---|---|
 | Canvas → Todoist sync | hourly | adopted 52 hand-made tasks on 2026-09-22; batches same-day quizzes; retries transient errors |
