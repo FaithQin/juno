@@ -11,7 +11,9 @@
 - Outlook adds and moves are texted even when the sync was started from chat (her "check everywhere" at 5:18pm
   added two meetings and the model never said so). First live run: 2 ChemE colloquiums copied; Kennedy interview and
   the Nathan intro call linked to events already on her Google calendar.
-- Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 315 tests.
+- `outlook.skip` (assistant.yaml): Outlook items with ChemE / Chem-E / Chemical Engineering in the title are never
+  copied (she left ChemE); the two ChemE colloquiums juno had copied were deleted from Google at her request.
+- Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 316 tests.
 
 ## 2026-10-04
 - Replies to a replaced question: a Telegram reply answers the waiting proposal only if the replied-to message was

@@ -51,6 +51,14 @@ put its adds there, "undo" after her own chat action ("add a task… undo") woul
 instead. So she takes a meeting off with "delete the colloquium" (`delete_event`, which *is*
 undoable). A deleted copy stays linked, so it isn't added back.
 
+**Groups she has left.** Adding without asking means every department invite lands on her calendar.
+Faith left ChemE ("remove me from the ChemE calendar", 2026-10-06), but there is no ChemE calendar to
+leave: the department's invites arrive in her Stanford Outlook and juno copied them. Unsubscribing from
+the department list is hers to do. On juno's side, `outlook.skip` in `assistant.yaml` lists title words
+(`ChemE`, `Chem-E`, `Chemical Engineering`); an item whose title contains one, in any case, is never
+copied. The two colloquiums already copied were deleted from Google, unlinked, and added to
+`outlook_declined`.
+
 ## 3. The heads-up
 
 `OutlookSync.heads_up` runs right after each Outlook sync (every 10 minutes) but reads **Google**,

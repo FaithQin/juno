@@ -33,5 +33,6 @@ calendar:
     exam: tomato                         # midterms, finals, exams, quizzes
 
 outlook:
-  target: Stanford                       # Google calendar that receives confirmed Outlook meetings
+  target: Stanford                       # Google calendar that receives Outlook meetings
   every_minutes: 10                      # how often the published Outlook link is checked
+  skip: [ChemE, Chem-E, Chemical Engineering]   # never copied: she left ChemE (2026-10-06); the department still invites her

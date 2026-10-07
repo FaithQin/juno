@@ -287,4 +287,5 @@ question waited silently behind an unanswered duplicates question since Sep 28. 
 | Reply block | **stays wide** (Faith, after the explanation): no reply to a message from before the waiting question can answer it |
 | Finding a task to complete/move/edit | **every project** (Faith): any active task, not only class + p1/p2; "what's due" unchanged (mine) |
 | "Faith + Nathan // Intro Call" (Oct 7) | **add it** (Faith): taken off `outlook_declined` so the first auto-add run copies and links it |
+| ChemE invites | **never copied** (Faith: "i'm no longer ChemE"): `outlook.skip: [ChemE, Chem-E, Chemical Engineering]` matches titles in any case (word list mine); the two colloquiums juno had copied were deleted. Leaving the department's list is hers to do (there is no ChemE Google calendar) |
 

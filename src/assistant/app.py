@@ -117,7 +117,8 @@ def build_outlook_sync(rt: "Runtime", send) -> OutlookSync | None:
         return r.text
 
     return OutlookSync(fetch=fetch, calendar=rt.calendar, store=rt.store, target_calendar=rt.app_cfg.outlook.target,
-                       search_calendars=rt.app_cfg.brief.calendars, tz=rt.settings.tz, send=send, now=now_utc)
+                       search_calendars=rt.app_cfg.brief.calendars, tz=rt.settings.tz, send=send, now=now_utc,
+                       skip=rt.app_cfg.outlook.skip)
 
 
 def load_persona() -> str:

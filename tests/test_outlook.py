@@ -171,7 +171,7 @@ class Outbox:
         self.sent.append(text)
 
 
-def make_sync(tmp_path, feed: str, gcal_events=None):
+def make_sync(tmp_path, feed: str, gcal_events=None, skip=()):
     store = Store(tmp_path / "t.sqlite3")
     cal = FakeCalendar({date(2026, 9, 25): gcal_events or []})
     out = Outbox()
@@ -183,7 +183,7 @@ def make_sync(tmp_path, feed: str, gcal_events=None):
         return box["ics"]
 
     sync = OutlookSync(fetch=fetch, calendar=cal, store=store, target_calendar="Stanford", search_calendars=["Stanford", "TA"],
-                       tz=TZ, send=out, now=lambda: NOW)
+                       tz=TZ, send=out, now=lambda: NOW, skip=skip)
     return sync, store, cal, out, box
 
 
@@ -371,4 +371,15 @@ async def test_her_own_weekly_copy_gets_a_heads_up_every_week(tmp_path):
                     end=datetime(2026, 10, 15, 21, 30, tzinfo=TZ))
     cal.events[later.id] = later
     assert await sync.heads_up(now=datetime(2026, 10, 15, 20, 5, tzinfo=TZ)) == ["in 25 min: SSIG sync, 8:30–9:30pm"]
+
+
+async def test_items_from_a_group_she_left_are_never_copied(tmp_path):
+    """Faith, 2026-10-06: "remove me from the ChemE calendar since i'm no longer ChemE". The department's
+    invites still land in her Outlook; juno skips any item whose title has a word from `outlook.skip`."""
+    colloquium = TIM.replace("tim-uid", "cheme-uid").replace("Faith <> Tim", 'ChemE Colloquium with Hongbo Zeng "Soft Materials"')
+    car = TIM.replace("tim-uid", "car-uid").replace("Faith <> Tim", "chem-e-car kickoff").replace("T090000", "T110000").replace("T093000", "T113000")
+    sync, store, cal, out, _ = make_sync(tmp_path, ics(TIM, colloquium, car), skip=["ChemE", "Chem-E", "Chemical Engineering"])
+    await sync.run()
+    assert [e.title for e in cal.events.values()] == ["Faith <> Tim"]
+    assert "ChemE" not in out.sent[0] and "chem-e" not in out.sent[0]
 

@@ -34,7 +34,8 @@ def test_settings_has_phase2_keys_with_safe_defaults(monkeypatch):
 
 def test_outlook_config_and_setting_defaults(monkeypatch):
     cfg = AppConfig()
-    assert cfg.outlook.target == "Stanford" and cfg.outlook.every_minutes == 10
+    assert cfg.outlook.target == "Stanford" and cfg.outlook.every_minutes == 10 and cfg.outlook.skip == []
+    assert "ChemE" in load_app_config().outlook.skip                         # she left ChemE (2026-10-06)
     monkeypatch.setenv("CANVAS_TOKEN", "x")
     monkeypatch.setenv("TODOIST_TOKEN", "y")
     assert Settings(_env_file=None).outlook_ics_url == ""

@@ -217,8 +217,9 @@ class CalendarSyncConfig(BaseModel):
 
 
 class OutlookConfig(BaseModel):
-    target: str = "Stanford"        # Google calendar that receives confirmed Outlook meetings
+    target: str = "Stanford"        # Google calendar that receives Outlook meetings
     every_minutes: int = 10
+    skip: list[str] = Field(default_factory=list)   # never copy an item whose title has one of these (any case)
 
 
 class AppConfig(BaseModel):

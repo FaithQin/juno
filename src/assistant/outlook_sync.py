@@ -235,7 +235,9 @@ def _split(task_id: str) -> tuple[str, str]:
 
 class OutlookSync:
     def __init__(self, *, fetch: Callable[[], str], calendar, store: Store, target_calendar: str,
-                 search_calendars: list[str], tz: ZoneInfo, send: Send, now: Callable[[], datetime]):
+                 search_calendars: list[str], tz: ZoneInfo, send: Send, now: Callable[[], datetime],
+                 skip: list[str] | tuple[str, ...] = ()):
+        self.skip = [w.lower() for w in skip if w.strip()]   # title words she never wants copied ("ChemE")
         self.fetch = fetch                    # () -> ICS text; the real one GETs the published link
         self.calendar = calendar
         self.store = store
@@ -322,7 +324,8 @@ class OutlookSync:
         self._kv_set_list(GONE_KEY, reported)
 
         declined = self._kv_list(DECLINED_KEY)       # her "no" from when juno still asked: those stay off
-        new = [e for e in events if e.key not in links and e.uid not in declined and (e.rrule or e.end > now)]
+        new = [e for e in events if e.key not in links and e.uid not in declined and (e.rrule or e.end > now)
+               and not any(w in e.title.lower() for w in self.skip)]
         added_text = None
         if new:
             linked_ids = {_split(l.task_id)[1] for l in links.values()}
