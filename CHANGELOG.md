@@ -14,6 +14,7 @@
 - `outlook.skip` (assistant.yaml): Outlook items with ChemE / Chem-E / Chemical Engineering in the title are never
   copied (she left ChemE); the two ChemE colloquiums juno had copied were deleted from Google at her request.
 - Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 316 tests.
+- Duplicates question answered yes (EE 160A HW1 copy deleted, notes moved); nothing is waiting on her now.
 
 ## 2026-10-04
 - Replies to a replaced question: a Telegram reply answers the waiting proposal only if the replied-to message was

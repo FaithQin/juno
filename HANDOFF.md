@@ -61,9 +61,11 @@ what to do next. **Update it at the end of every working session.**
   invites come from a ChemE list to her Stanford Outlook. She needs to unsubscribe there; juno skips them meanwhile.
 - **"Try out Instinct"** was added to One-Off Tasks (due Oct 6) by hand via the Todoist MCP, at her request; juno had
   answered "which course is that for?" twice that morning.
-- **Duplicates question still waiting** (replaced again 2026-10-04 21:39Z, now 1 pair): "EE 160A: HW1 (due Fri Oct 9,
-  week 3)" as a copy of "EE 160A: HW1 (Gradescope)". Gradescope-match and Canvas-calendar questions still queue behind
-  it **silently** (Outlook no longer does). The ENGR 40M prelab pair from Oct 3 is gone from it (resolved by hand?).
+- **Duplicates question answered yes** (Faith, in the Claude session, 2026-10-06 ~17:50 PDT; applied on the server through
+  `DuplicateCheck.approve`, the same path as a Telegram yes): deleted "EE 160A: HW1 (due Fri Oct 9, week 3)", its notes
+  (SF Oct 9, Pavone, late window) moved onto "EE 160A: HW1 (Gradescope)"; undoable from Telegram. No question is pending,
+  so the queued **Gradescope match question** ("1 new assignment looks like a task you already have") goes out at the
+  next Gradescope run (~20:37 PDT) or on "sync gradescope". Which assignment it is wasn't checked.
   **Unchecked:** why `gradescope_match` didn't ask about her "Lab 1 prelab" before the Gradescope twin was made on Oct 3.
 - **Reply gap closed (2026-10-04, `05d654c`, deployed):** a Telegram reply answers the waiting question only if the
   replied-to message was sent at or after its `asked_at`; a yes/no to an older version gets "nothing done: that question
