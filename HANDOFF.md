@@ -124,19 +124,17 @@ what to do next. **Update it at the end of every working session.**
 - `data/browser/canvas.json` still exists on the Mac and server; unused now, harmless.
 
 ## Next candidates (Faith decides)
-0. **Let juno read and complete tasks outside classes.** `ChatOps._candidates` sees class tasks + p1/p2 anywhere, so
-   "done with try out instinct" (p4, One-Off Tasks) can't be found yet. Asked Faith on 2026-10-06 (see Pending).
-1. **No silent queue.** Gradescope-match and Canvas-calendar questions still wait without a word behind another
+0. **No silent queue.** Gradescope-match and Canvas-calendar questions still wait without a word behind another
    question; at least the brief should say "a question is waiting since …" (the Outlook incident's second cause).
-2. Let juno change its own class list from chat ("add EE 101A as a class"); color Canvas/Outlook copies with her scheme.
-3. The Canvas-side exact-title question (Pending, older notes).
-4. A mixed answer to a multi-item question ("yes to the first, no to the second"); today it's all or nothing.
-5. Canvas API tools for the pages she names (grades, modules, files).
-6. History window; a `/help` command listing what juno can do.
-7. CS 106B course-site scrape; iMessage via Photon; public-repo scrub; Chromium sandbox hardening; narrow the nudge rule.
+1. Let juno change its own class list from chat ("add EE 101A as a class"); color Canvas/Outlook copies with her scheme.
+2. The Canvas-side exact-title question (Pending, older notes).
+3. A mixed answer to a multi-item question ("yes to the first, no to the second"); today it's all or nothing.
+4. Canvas API tools for the pages she names (grades, modules, files).
+5. History window; a `/help` command listing what juno can do.
+6. CS 106B course-site scrape; iMessage via Photon; public-repo scrub; Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 313 passing).
+1. `uv sync && uv run pytest` (expect 315 passing).
 2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md` and `docs/12-replies-colors-planned-classes.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.

@@ -337,7 +337,9 @@ class ChatOps:
         return f"added: {content} ({' · '.join(bits)}){where}"
 
     def _pick(self, query: str) -> object | str:
-        matches = match_tasks(query, self._candidates(), sections=self.course_by_section,
+        """The one task she means, from every active task in any project (Faith, 2026-10-06): she
+        completes, moves and edits one-off and club tasks too, not only class or p1/p2 ones."""
+        matches = match_tasks(query, self.todoist.all_tasks(), sections=self.course_by_section,
                               projects=self.course_by_project)
         if not matches:
             return f"no task matches '{query}'"

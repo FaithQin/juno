@@ -88,9 +88,9 @@ HER_PROJECTS = [("INBOX", "Inbox", None), ("ONEOFF", "One-Off Tasks", None), ("A
                 ("SSIG", "SSIG", "CLUBS"), ("ENERGY", "Energy Club", "CLUBS"), ("HEALTH", "Health", "AREAS")]
 
 
-def make_her_ops(tmp_path):
+def make_her_ops(tmp_path, tasks=None):
     store = Store(tmp_path / "t.sqlite3")
-    todoist = FakeTodoist(projects=HER_PROJECTS)
+    todoist = FakeTodoist(deepcopy(tasks or []), projects=HER_PROJECTS)
     ops = ChatOps(store=store, todoist=todoist, calendar=FakeCalendar({}), tz=TZ, courses=COURSES, sections={},
                   classes_project_id="CLASSES", calendar_names=["Stanford"], now=lambda: NOW,
                   course_projects={"CME 102": "P-CME"})
@@ -117,6 +117,19 @@ def test_add_task_goes_to_the_project_she_names(tmp_path):
     assert ops.add_task("book a physical", project="Health") == "added: book a physical (no date) → Health"
     assert ops.add_task("pset 3", project="cme 102") == "added: CME 102: pset 3 (no date)"   # a class named as a project
     assert [t.project_id for t in todoist.all_tasks()] == ["ONEOFF", "SSIG", "HEALTH", "P-CME"]
+
+
+def test_complete_move_and_edit_find_tasks_in_any_project(tmp_path):
+    """Faith, 2026-10-06: juno sees all her tasks when she completes, moves or edits one, not only class
+    tasks and p1/p2 ones (a p4 in One-Off Tasks used to be invisible)."""
+    physical = FakeTask("H1", "Book a physical", FakeDue(date(2026, 9, 25)), 1, None, project_id="HEALTH")   # p4, not juno's
+    ops, store, todoist = make_her_ops(tmp_path, [physical])
+    ops.add_task("Try out Instinct", due="2026-09-28", project="one-off tasks")
+    assert ops.reschedule_task("instinct", due="2026-09-30") == "moved: Try out Instinct → wed sep 30"
+    assert ops.edit_task("instinct", title="Try out Instinct (the AI notebook)") == "updated: Try out Instinct (the AI notebook) (title)"
+    assert ops.complete_task("try out instinct") == "done: Try out Instinct (the AI notebook)"
+    assert ops.complete_task("physical") == "done: Book a physical"
+    assert todoist.get_task("H1").is_completed
 
 
 def test_add_task_to_a_project_that_doesnt_exist_or_is_ambiguous_says_so(tmp_path):

@@ -7,6 +7,7 @@ A heads-up goes out 30 minutes before each Outlook meeting.
 """
 
 import json
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -347,3 +348,20 @@ async def test_every_occurrence_of_an_outlook_series_gets_a_heads_up(tmp_path):
                                                  id=f"{series.id}_{day}", calendar_id="cal-stanford", recurring_id=series.id)
     assert await sync.heads_up(now=datetime(2026, 10, 14, 20, 5, tzinfo=TZ)) == ["in 25 min: SSIG Weekly Leadership Sync, 8:30–9:30pm"]
     assert await sync.heads_up(now=datetime(2026, 10, 28, 20, 10, tzinfo=TZ)) == ["in 20 min: SSIG Weekly Leadership Sync, 8:30–9:30pm"]
+
+
+async def test_her_own_weekly_copy_gets_a_heads_up_every_week(tmp_path):
+    """Linking her hand-made weekly event links the occurrence Google listed ("<series>_<time>");
+    the heads-up still has to find every other week of that series."""
+    first = Event("SSIG sync", datetime(2026, 10, 8, 20, 30, tzinfo=TZ), datetime(2026, 10, 8, 21, 30, tzinfo=TZ), None, False,
+                  "Stanford", id="hers_20261009T033000Z", calendar_id="cal-stanford", recurring_id="hers")
+    series_on_oct_8 = SSIG.replace("20260930T233000", "20261008T233000").replace("20261001T003000", "20261009T003000")
+    sync, store, cal, out, _ = make_sync(tmp_path, ics(series_on_oct_8))
+    cal.events[first.id] = first
+    await sync.run()
+    assert "- SSIG Weekly Leadership Sync (thu oct 8 8:30pm) → SSIG sync" in out.sent[0]
+    later = replace(first, id="hers_20261016T033000Z", start=datetime(2026, 10, 15, 20, 30, tzinfo=TZ),
+                    end=datetime(2026, 10, 15, 21, 30, tzinfo=TZ))
+    cal.events[later.id] = later
+    assert await sync.heads_up(now=datetime(2026, 10, 15, 20, 5, tzinfo=TZ)) == ["in 25 min: SSIG sync, 8:30–9:30pm"]
+

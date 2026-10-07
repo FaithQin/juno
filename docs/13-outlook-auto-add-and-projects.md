@@ -76,8 +76,15 @@ Faith chose (2026-10-06): **juno always asks which project, unless she names one
 - A class named as the project ("cme 102") still goes to the class, with its course prefix.
 - The task keeps her words as the title (no course prefix) and is undoable like any chat add.
 
-**Still open:** juno *reads* only class tasks plus p1/p2 tasks anywhere (`ChatOps._candidates`),
-so "done with try out instinct" can't find a p4 task in One-Off Tasks yet.
+**Finding a task to complete, move or edit** used to search only class tasks plus p1/p2 ones
+(`ChatOps._candidates`), so "done with try out instinct" couldn't find a p4 task in One-Off Tasks.
+Faith chose (2026-10-06) that juno sees every project for these: `_pick` now matches against
+`todoist.all_tasks()`. With ~280 tasks a vague name gets "which one?" more often; that's the
+trade. "What's due" (`get_tasks`) still lists class tasks plus p1/p2, as before.
+
+One detail in the heads-up: when Outlook links her own *weekly* event, the id it links is the
+occurrence Google listed (`<series>_<time>`). `heads_up` also accepts the series part of such an
+id, so every week of her copy gets its reminder, not only the first.
 
 ## Reading the code
 
@@ -87,4 +94,5 @@ so "done with try out instinct" can't find a p4 task in One-Off Tasks yet.
 3. `chat_ops.py` — `_other_projects`, `_project`, `add_task(project=)`; `agent.py` — the tool's
    `project` argument; `persona.md` — the "which project" rule and what juno does with Outlook.
 4. Tests: `test_outlook.py` (adding, declines, ended meetings, failed copies, never waiting,
-   heads-ups for single meetings and series), `test_chat_ops.py` (`HER_PROJECTS`).
+   heads-ups for single meetings, series and her own weekly copy), `test_chat_ops.py` (`HER_PROJECTS`,
+   finding tasks in any project).

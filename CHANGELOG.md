@@ -7,7 +7,8 @@
   Outlook's question had been stuck silently behind an unanswered duplicates question since Sep 28.
 - `add_task` takes a Todoist project for tasks that aren't for a class ("one-off tasks", "ssig"); without one juno
   asks which project. "Try out Instinct" added to One-Off Tasks by hand (juno had refused it twice).
-- Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 313 tests.
+- Complete, move, edit, snooze and delete find a task in any Todoist project (was: class tasks + p1/p2 only).
+- Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 315 tests.
 
 ## 2026-10-04
 - Replies to a replaced question: a Telegram reply answers the waiting proposal only if the replied-to message was

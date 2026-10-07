@@ -285,4 +285,6 @@ question waited silently behind an unanswered duplicates question since Sep 28. 
 | Meetings already over | not copied (mine) |
 | A task that isn't for a class | **juno asks which Todoist project unless she names one** (Faith); names match ignoring case/punctuation, then a unique partial match |
 | Reply block | **stays wide** (Faith, after the explanation): no reply to a message from before the waiting question can answer it |
+| Finding a task to complete/move/edit | **every project** (Faith): any active task, not only class + p1/p2; "what's due" unchanged (mine) |
+| "Faith + Nathan // Intro Call" (Oct 7) | **add it** (Faith): taken off `outlook_declined` so the first auto-add run copies and links it |
 

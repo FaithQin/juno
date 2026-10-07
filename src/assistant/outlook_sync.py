@@ -418,6 +418,8 @@ class OutlookSync:
         if not links:
             return []
         ours = {event_id for _, event_id in links}
+        # her own weekly copy is linked by the occurrence Google listed, "<series>_<time>" (plain ids have no "_")
+        ours |= {event_id.rsplit("_", 1)[0] for event_id in ours if "_" in event_id}
         names = list(dict.fromkeys([self.target, *self.search_calendars]))
         try:
             soon = await asyncio.to_thread(self.calendar.events_in_window, names, now, now + HEADS_UP + timedelta(minutes=1), self.tz)
