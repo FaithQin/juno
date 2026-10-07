@@ -31,6 +31,9 @@ calendar:
     class: flamingo                      # classes and sections of graded courses
     audit: grape                         # audited classes
     exam: tomato                         # midterms, finals, exams, quizzes
+  # A repeating event juno adds stops at the end of its quarter unless she gives an end (Faith, 2026-10-06).
+  # Last day of end-quarter exams, Stanford 2026-27 (studentservices.stanford.edu academic calendar). Add next year's.
+  quarter_ends: [2026-12-11, 2027-03-19, 2027-06-09, 2027-08-14]
 
 outlook:
   target: Stanford                       # Google calendar that receives Outlook meetings

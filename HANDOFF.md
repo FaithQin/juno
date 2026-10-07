@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-06 (~17:45 PDT, after Outlook auto-add and tasks outside classes)
+# Handoff — state as of 2026-10-06 (~19:00 PDT, after Outlook auto-add, tasks outside classes, repeating events)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
@@ -12,7 +12,7 @@ what to do next. **Update it at the end of every working session.**
 | Canvas events → Stanford calendar | hourly | first-run proposal **re-asked once** at the next run (see Pending) |
 | Nudges: 8pm the evening before, 2h before | scan every 10 min | late ones say "i was offline"; a Todoist blip skips one scan quietly. **Planned work** (a Todoist deadline field, a duration, or "block" in the title) gets **one heads-up 10 min before a timed start** instead ("starting 3:00pm: … (1h · deadline thu)"). **Audited classes get none.** |
 | Morning brief | 07:00 daily | every dated Todoist task + calendars Stanford/TA/primary/StartX/Cal.com; waits ~10 min through a Todoist outage, then says so. Sections: **due today** (incl. planned work whose Todoist deadline is today) / **planned today** / due tomorrow / overdue ("planned fri" for missed plans); audit tasks tagged "(audit)" |
-| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it, **only if that message was sent after the waiting question was asked** (a reply to an older, replaced question gets "nothing done: that question was replaced on …" + the current one, in code; 2026-10-04); every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks, and (2026-10-06) a `project` for tasks outside her classes ("one-off tasks", "ssig"; without one it asks which); `color_event` and `add_event(color=)` with her scheme applied automatically |
+| Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it, **only if that message was sent after the waiting question was asked** (a reply to an older, replaced question gets "nothing done: that question was replaced on …" + the current one, in code; 2026-10-04); every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks, and (2026-10-06) a `project` for tasks outside her classes ("one-off tasks", "ssig"; without one it asks which); `color_event` and `add_event(color=)` with her scheme applied automatically; **since 2026-10-06:** `add_event` makes repeating events (repeat/every/days/until/count → one Google event with an RRULE; no end = end of the quarter) and all-day ones; `delete_event(all_occurrences=True)` removes a series |
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-10-02), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`. **Since 2026-10-06:** new items (incl. tentative invites) are **added without asking** and juno texts what it added or linked; items she said no to before stay off; ended meetings skipped; **heads-up 30 min before each Outlook meeting** (read from Google, so series and her own copies work). Never waits on another question. **Skips titles with ChemE / Chem-E / Chemical Engineering** (`outlook.skip`; she left ChemE). `sync_now("outlook")`; `assistant outlook --print`. `docs/13-outlook-auto-add-and-projects.md` |
@@ -59,6 +59,13 @@ what to do next. **Update it at the end of every working session.**
 - **ChemE colloquiums (Oct 12, Oct 19) deleted from Google** at her request (2026-10-06 ~17:45 PDT), unlinked and added
   to `outlook_declined` (now 11). She asked to be "removed from the ChemE calendar": there is no ChemE Google calendar; the
   invites come from a ChemE list to her Stanford Outlook. She needs to unsubscribe there; juno skips them meanwhile.
+- **Open (Faith asked juno, 2026-10-06 17:43 PDT): a linked Outlook meeting doesn't take Outlook's details.** Her
+  "HOLD: Antoni Soledad (Swish)" (Google, Wed Oct 7 2:15pm) was linked to the Outlook "Faith <> Antoni"; the other person
+  confirmed and filled in the details in Outlook, but linking only adopts her event and later runs only follow time
+  changes, so the hold keeps its title and has none of the details. juno then suggested `browser-login outlook.office.com`
+  (an SSO login that would die daily, like Canvas did). Fix candidate: when an Outlook item is linked to her hand-made
+  event, or its title/location/description change, update the Google copy too (keep her color). Ask Faith first
+  whether juno may overwrite the title of a hold she made.
 - **"Try out Instinct"** was added to One-Off Tasks (due Oct 6) by hand via the Todoist MCP, at her request; juno had
   answered "which course is that for?" twice that morning.
 - **Duplicates question answered yes** (Faith, in the Claude session, 2026-10-06 ~17:50 PDT; applied on the server through
@@ -134,18 +141,19 @@ what to do next. **Update it at the end of every working session.**
 - `data/browser/canvas.json` still exists on the Mac and server; unused now, harmless.
 
 ## Next candidates (Faith decides)
-0. **No silent queue.** Gradescope-match and Canvas-calendar questions still wait without a word behind another
+0. **Outlook details onto a linked hold** (Pending, the Antoni meeting).
+1. **No silent queue.** Gradescope-match and Canvas-calendar questions still wait without a word behind another
    question; at least the brief should say "a question is waiting since …" (the Outlook incident's second cause).
-1. Let juno change its own class list from chat ("add EE 101A as a class"); color Canvas/Outlook copies with her scheme.
-2. The Canvas-side exact-title question (Pending, older notes).
-3. A mixed answer to a multi-item question ("yes to the first, no to the second"); today it's all or nothing.
-4. Canvas API tools for the pages she names (grades, modules, files).
-5. History window; a `/help` command listing what juno can do.
-6. CS 106B course-site scrape; iMessage via Photon; public-repo scrub; Chromium sandbox hardening; narrow the nudge rule.
+2. Let juno change its own class list from chat ("add EE 101A as a class"); color Canvas/Outlook copies with her scheme.
+3. The Canvas-side exact-title question (Pending, older notes).
+4. A mixed answer to a multi-item question ("yes to the first, no to the second"); today it's all or nothing.
+5. Canvas API tools for the pages she names (grades, modules, files).
+6. History window; a `/help` command listing what juno can do.
+7. CS 106B course-site scrape; iMessage via Photon; public-repo scrub; Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 316 passing).
-2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md` and `docs/12-replies-colors-planned-classes.md`.
+1. `uv sync && uv run pytest` (expect 327 passing).
+2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md` and `docs/12-replies-colors-planned-classes.md`, `docs/13-outlook-auto-add-and-projects.md` and `docs/14-recurring-and-all-day-events.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.
 4. Ask Faith what's next; don't start a phase without her answers to its scoping questions.

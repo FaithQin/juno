@@ -214,6 +214,7 @@ class CalendarSyncConfig(BaseModel):
     target: str = "Stanford"        # Google calendar that receives Canvas events
     every_minutes: int = 60
     colors: EventColorScheme = Field(default_factory=EventColorScheme)
+    quarter_ends: list[date] = Field(default_factory=list)   # last day of each quarter's finals; repeats stop there by default
 
 
 class OutlookConfig(BaseModel):

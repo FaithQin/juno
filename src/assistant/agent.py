@@ -275,20 +275,31 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
 
     @agent.tool
     def add_event(ctx: RunContext[ChatOps], title: str, start: str, end: str | None = None, location: str | None = None,
-                  calendar: str | None = None, notes: str | None = None, color: str | None = None) -> str:
-        """Put an event on Faith's Google Calendar.
+                  calendar: str | None = None, notes: str | None = None, color: str | None = None,
+                  repeat: str | None = None, every: int | None = None, days: list[str] | None = None,
+                  until: str | None = None, count: int | None = None) -> str:
+        """Put an event on Faith's Google Calendar: one-off or repeating, timed or all day. Undoable.
+
+        A repeating event is one event with a repeat rule (every occurrence at once), never many copies.
+        Without `until` or `count` it stops at the end of the current quarter; say so in your reply.
 
         Args:
             title: event title.
-            start: ISO datetime, e.g. 2026-09-25T15:00.
-            end: ISO datetime; omit for one hour.
+            start: ISO datetime (2026-09-25T15:00), or an ISO date (2026-09-25) for an all-day event.
+            end: same kind as start; omit for one hour (or one day). For all day, the last day, inclusive.
             location: room or place, if given.
             calendar: "Stanford" for classes and exams, "TA" for office hours and help sessions; omit for personal.
             notes: optional description.
             color: only if she names one ("green", "flamingo", "default"); otherwise leave it out and her
                 scheme applies (classes and sections flamingo, audits grape, exams tomato).
+            repeat: "daily", "weekly", "monthly" or "yearly" for a repeating event.
+            every: 2 for every other week (or day, month); omit for every one.
+            days: weekdays for a weekly repeat, e.g. ["mon", "wed"]; omit to repeat on start's weekday.
+            until: ISO date of the last day it may happen.
+            count: how many times, instead of until.
         """
-        return ctx.deps.add_event(title, start, end=end, location=location, calendar=calendar, notes=notes, color=color)
+        return ctx.deps.add_event(title, start, end=end, location=location, calendar=calendar, notes=notes, color=color,
+                                  repeat=repeat, every=every, days=days, until=until, count=count)
 
     @agent.tool
     def color_event(ctx: RunContext[ChatOps], query: str, color: str, all_occurrences: bool = False) -> str:
@@ -314,13 +325,14 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         return ctx.deps.move_event(query, start, end=end)
 
     @agent.tool
-    def delete_event(ctx: RunContext[ChatOps], query: str) -> str:
+    def delete_event(ctx: RunContext[ChatOps], query: str, all_occurrences: bool = False) -> str:
         """Delete an event (next two weeks) from Faith's calendar. Undoable.
 
         Args:
             query: a few words from the event title.
+            all_occurrences: True to delete every occurrence of a repeating event, not just the next one.
         """
-        return ctx.deps.delete_event(query)
+        return ctx.deps.delete_event(query, all_occurrences=all_occurrences)
 
     @agent.tool
     async def answer_proposal(ctx: RunContext[ChatOps], approved: bool) -> str:

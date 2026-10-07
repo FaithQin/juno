@@ -289,3 +289,14 @@ question waited silently behind an unanswered duplicates question since Sep 28. 
 | "Faith + Nathan // Intro Call" (Oct 7) | **add it** (Faith): taken off `outlook_declined` so the first auto-add run copies and links it |
 | ChemE invites | **never copied** (Faith: "i'm no longer ChemE"): `outlook.skip: [ChemE, Chem-E, Chemical Engineering]` matches titles in any case (word list mine); the two colloquiums juno had copied were deleted. Leaving the department's list is hers to do (there is no ChemE Google calendar) |
 
+## Repeating and all-day events (2026-10-06, night)
+
+Juno told her it couldn't create recurring events; she said "fix that next". Walkthrough: `docs/14-recurring-and-all-day-events.md`.
+
+| Decision | Choice |
+|---|---|
+| A repeat with no end | **stops at the end of the quarter** (Faith): `calendar.quarter_ends` (last exam day, Stanford 2026-27: Dec 11, Mar 19, Jun 9, Aug 14); unknown quarter → juno asks |
+| How a repeat is built | the model passes fields (repeat/every/days/until/count); code checks them and writes the RRULE (mine) |
+| All-day events | a date with no time; end is the last day, inclusive (mine; her pset ask needed it) |
+| Deleting a series | `delete_event(all_occurrences=True)`, undoable with the rule intact; default still one occurrence (mine) |
+

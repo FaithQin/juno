@@ -15,6 +15,10 @@
   copied (she left ChemE); the two ChemE colloquiums juno had copied were deleted from Google at her request.
 - Reply block kept wide (Faith). `docs/13-outlook-auto-add-and-projects.md`. Tests first; 316 tests.
 - Duplicates question answered yes (EE 160A HW1 copy deleted, notes moved); nothing is waiting on her now.
+- Repeating events: `add_event` takes repeat/every/days/until/count (one Google event with an RRULE, built and
+  checked in code, `recurrence.py`); no end → the end of the quarter (`calendar.quarter_ends`). All-day events (a
+  date, inclusive end). `delete_event(all_occurrences=True)` removes a series; undo restores it. Undoing a deleted
+  all-day event keeps it all-day. `docs/14-recurring-and-all-day-events.md`. Tests first; 327 tests.
 
 ## 2026-10-04
 - Replies to a replaced question: a Telegram reply answers the waiting proposal only if the replied-to message was

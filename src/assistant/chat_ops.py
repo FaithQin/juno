@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 from .brief import Event, short_location, _span
 from .colors import NAMES as COLOR_NAMES, ColorScheme, color_id, color_name
+from . import recurrence
 from .gcal import event_body
 from .db import Store
 from .reminders import DueTask, deadline_words, duration_words, planned_tail
@@ -37,7 +38,7 @@ class ChatOps:
                  now: Callable[[], datetime], web=None, browser=None, ed=None,
                  course_projects: dict[str, str] | None = None, colors: ColorScheme | None = None,
                  audits: list[str] | None = None, aliases: dict[str, str] | None = None,
-                 dropped: list[tuple[str, date | None]] | None = None):
+                 dropped: list[tuple[str, date | None]] | None = None, quarter_ends: list[date] | None = None):
         self.web = web                        # WebReader, or None when links can't be opened
         self.browser = browser                # BrowserSession, or None when there is no browser
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
@@ -50,6 +51,7 @@ class ChatOps:
         self.audit_codes = set(audits or [])  # courses she audits: no nudges, tagged in the brief
         self.course_aliases = dict(aliases or {})   # "CS 227A" → "EE 227"
         self.dropped = list(dropped or [])          # [("MATSCI 88Q", date(2026, 9, 30)), ...]
+        self.quarter_ends = sorted(quarter_ends or [])   # last day of each quarter's finals: where a repeat stops by default
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -479,7 +481,7 @@ class ChatOps:
             msg = f"undone: {what} is {color_name(p.get('old'))} again"
         elif a.kind == "delete_event":
             self.calendar.create_event(p["calendar_id"], p["body"])
-            msg = f"undone: {p['title']} is back on {p['day']}"
+            msg = f"undone: every {p['title']} is back" if p.get("series") else f"undone: {p['title']} is back on {p['day']}"
         elif a.kind == "delete_task":
             snap = p["snapshot"]
             due_at = due_date = None
@@ -562,8 +564,24 @@ class ChatOps:
 
     COLOR_ERROR = f"error: color must be one of {COLOR_NAMES} (or default)"
 
+    def _parse_point(self, raw: str | None) -> datetime | date | None:
+        """An ISO date (all day) or datetime (in her timezone unless it says otherwise)."""
+        if raw and DATE_RE.match(raw.strip()):
+            return date.fromisoformat(raw.strip())
+        return self._parse_dt(raw)
+
+    def _event_when(self, start: datetime | date, end: datetime | date | None) -> str:
+        """'thu oct 8 3:00–4:00pm', 'sat oct 10 all day' or 'sat oct 10 – sun oct 11 all day'."""
+        if isinstance(start, datetime):
+            return self._day_span(start, end or start + timedelta(hours=1))
+        if end and end != start:
+            return f"{self._date_words(start)} – {self._date_words(end)} all day"
+        return f"{self._date_words(start)} all day"
+
     def add_event(self, title: str, start: str, end: str | None = None, location: str | None = None,
-                  calendar: str | None = None, notes: str | None = None, color: str | None = None) -> str:
+                  calendar: str | None = None, notes: str | None = None, color: str | None = None,
+                  repeat: str | None = None, every: int | None = None, days: list[str] | str | None = None,
+                  until: str | None = None, count: int | None = None) -> str:
         if self.calendar is None:
             return "calendar isn't connected yet. run: uv run assistant gcal-auth"
         if color is not None:
@@ -576,16 +594,37 @@ class ChatOps:
         if isinstance(target, str):
             return target
         cal_id, label = target
-        start_dt = self._parse_dt(start)
-        if start_dt is None:
+        start_at = self._parse_point(start)
+        if start_at is None:
             return self.START_ERROR
-        end_dt = self._parse_dt(end) if end else None
-        body = event_body(title=title.strip(), start=start_dt, end=end_dt, location=location, description=notes, color_id=cid or None)
+        end_at = self._parse_point(end) if end else None
+        if end and end_at is None:
+            return self.START_ERROR.replace("start", "end", 1)
+        if end_at is not None and isinstance(start_at, datetime) != isinstance(end_at, datetime):
+            return "error: start and end must both be dates or both be times"
+        rep = None
+        if repeat:
+            rep = recurrence.plan(repeat=repeat, every=every, days=days, until=until, count=count)
+            if isinstance(rep, str):
+                return rep
+            first = self._local(start_at).date() if isinstance(start_at, datetime) else start_at
+            shift = recurrence.first_on(first, rep.days) - first   # onto the first of her weekdays
+            start_at, first = start_at + shift, first + shift
+            end_at = end_at + shift if end_at is not None else None
+            rep = recurrence.finish(rep, first, self.quarter_ends)
+            if isinstance(rep, str):
+                return rep
+        elif until or count or days or every is not None:
+            return "error: until, count, every and days need a repeat"
+        rule = [recurrence.rrule(rep, all_day=not isinstance(start_at, datetime), tz=self.tz)] if rep else None
+        body = event_body(title=title.strip(), start=start_at, end=end_at, location=location, description=notes,
+                          color_id=cid or None, recurrence=rule)
         created = self.calendar.create_event(cal_id, body)
         self.store.log_action("add_event", {"calendar_id": cal_id, "event_id": created["id"], "title": title.strip()}, at=self.now())
         where = f" at {location}" if location else ""
         tag = f"{label}, {color_name(cid)}" if cid else label
-        return f"added: {title.strip()}, {self._day_span(start_dt, end_dt or start_dt + timedelta(hours=1))}{where} ({tag})"
+        repeats = f", {recurrence.describe(rep)}" if rep else ""
+        return f"added: {title.strip()}, {self._event_when(start_at, end_at)}{repeats}{where} ({tag})"
 
     def move_event(self, query: str, start: str, end: str | None = None) -> str:
         e = self._pick_event(query)
@@ -626,16 +665,27 @@ class ChatOps:
             return f"colored every {e.title} {color_name(cid)}"
         return f"colored {e.title} {color_name(cid)} ({self._day_span(e.start, e.end)})"
 
-    def delete_event(self, query: str) -> str:
-        e = self._pick_event(query)
+    SERIES_KEYS = ("summary", "start", "end", "location", "description", "recurrence", "colorId",
+                   "extendedProperties", "reminders", "transparency", "visibility")
+
+    def delete_event(self, query: str, all_occurrences: bool = False) -> str:
+        e = self._pick_event(query, series_ok=all_occurrences)
         if isinstance(e, str):
             return e
-        body = event_body(title=e.title, start=e.start, end=e.end, location=e.location, description=e.description, canvas_id=e.canvas_id,
-                          color_id=e.color_id)
+        if all_occurrences and e.recurring_id:          # the whole series; undo recreates it from the series' own body
+            master = self.calendar.get_event(e.calendar_id, e.recurring_id)
+            body = {k: master[k] for k in self.SERIES_KEYS if k in master}
+            self.calendar.delete_event(e.calendar_id, e.recurring_id)
+            self.store.log_action("delete_event", {"calendar_id": e.calendar_id, "body": body, "title": e.title, "series": True},
+                                  at=self.now())
+            return f"deleted every {e.title}"
+        day = self._local(e.start).date()
+        body = event_body(title=e.title, start=day if e.all_day else e.start, end=None if e.all_day else e.end,
+                          location=e.location, description=e.description, canvas_id=e.canvas_id, color_id=e.color_id)
         self.calendar.delete_event(e.calendar_id, e.id)
         self.store.log_action("delete_event", {"calendar_id": e.calendar_id, "body": body, "title": e.title,
-                                               "day": self._date_words(self._local(e.start).date())}, at=self.now())
-        return f"deleted: {e.title} ({self._day_span(e.start, e.end)})"
+                                               "day": self._date_words(day)}, at=self.now())
+        return f"deleted: {e.title} ({self._event_when(day, None) if e.all_day else self._day_span(e.start, e.end)})"
 
     def delete_task(self, query: str) -> str:
         t = self._pick(query)
