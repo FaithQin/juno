@@ -6,6 +6,11 @@ words alike. Her scheme, read from her Stanford calendar on 2026-10-03: classes 
 Flamingo, audited classes Grape, exams Tomato, everything else the calendar's default. juno uses
 it for events it adds (her choice that day) unless she names a color; synced copies of Canvas
 and Outlook events keep the default.
+
+2026-10-06: auditing ended, so there is no audit color in her config any more; and her HOLD markers
+("HOLD: <Name> (<Org>)", a time held for a meeting that isn't confirmed) are Graphite, to set them
+apart from confirmed meetings. A hold beats every other kind, and juno never recolors one
+(`ChatOps.color_event`).
 """
 
 from __future__ import annotations
@@ -28,6 +33,11 @@ NAMES = ", ".join(EVENT_COLORS)
 _BY_ID = {v: k for k, v in EVENT_COLORS.items()}
 # "Final Cut Pro" is not an exam; "finals", "final exam", "midterm 1" are.
 EXAM_RE = re.compile(r"\b(mid-?terms?|final exams?|finals|exams?|quiz(?:zes)?)\b", re.I)
+HOLD_RE = re.compile(r"^\s*hold\s*:", re.I)      # "HOLD: Nathan (Andrews Cooper)"; not "Holden", not "Placeholder:"
+
+
+def is_hold(title: str) -> bool:
+    return bool(HOLD_RE.match(title or ""))
 
 
 def color_id(name: str | None) -> str | None:
@@ -51,10 +61,11 @@ def _squash(text: str) -> str:
 @dataclass(frozen=True)
 class ColorScheme:
     """Color names per kind of event; `courses` are her graded course codes, `audits` the ones she
-    audits (aliases included, e.g. CS 227A for EE 227)."""
+    audits (aliases included, e.g. AA 174A for EE 160A)."""
     klass: str | None = "flamingo"
-    audit: str | None = "grape"
+    audit: str | None = None
     exam: str | None = "tomato"
+    hold: str | None = "graphite"
     courses: tuple[str, ...] | list[str] = field(default_factory=tuple)
     audits: tuple[str, ...] | list[str] = field(default_factory=tuple)
 
@@ -65,9 +76,11 @@ class ColorScheme:
         def mentions(codes) -> bool:
             return any(_squash(c) and _squash(c) in squashed for c in codes)
 
-        if EXAM_RE.search(title):
+        if is_hold(title):
+            kind = self.hold
+        elif EXAM_RE.search(title):
             kind = self.exam
-        elif re.search(r"\baudit\b", title, re.I) or mentions(self.audits):
+        elif self.audit and (re.search(r"\baudit\b", title, re.I) or mentions(self.audits)):
             kind = self.audit
         elif mentions(self.courses):
             kind = self.klass

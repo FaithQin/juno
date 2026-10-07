@@ -18,7 +18,7 @@ from typing import Callable
 from zoneinfo import ZoneInfo
 
 from .brief import Event, short_location, _span
-from .colors import NAMES as COLOR_NAMES, ColorScheme, color_id, color_name
+from .colors import NAMES as COLOR_NAMES, ColorScheme, color_id, color_name, is_hold
 from .gcal import event_body
 from .db import Store
 from .reminders import DueTask, deadline_words, duration_words, planned_tail
@@ -37,7 +37,8 @@ class ChatOps:
                  now: Callable[[], datetime], web=None, browser=None, ed=None,
                  course_projects: dict[str, str] | None = None, colors: ColorScheme | None = None,
                  audits: list[str] | None = None, aliases: dict[str, str] | None = None,
-                 dropped: list[tuple[str, date | None]] | None = None):
+                 dropped: list[tuple[str, date | None]] | None = None,
+                 ended_audits: list[tuple[str, date | None]] | None = None):
         self.web = web                        # WebReader, or None when links can't be opened
         self.browser = browser                # BrowserSession, or None when there is no browser
         self.ed = ed                          # EdClient, or None without ED_API_TOKEN
@@ -50,6 +51,7 @@ class ChatOps:
         self.audit_codes = set(audits or [])  # courses she audits: no nudges, tagged in the brief
         self.course_aliases = dict(aliases or {})   # "CS 227A" → "EE 227"
         self.dropped = list(dropped or [])          # [("MATSCI 88Q", date(2026, 9, 30)), ...]
+        self.ended_audits = list(ended_audits or [])   # [("EE 227 / CS 227A", date(2026, 10, 6)), ...]
         self.store = store
         self.todoist = todoist
         self.calendar = calendar
@@ -570,7 +572,7 @@ class ChatOps:
             cid = color_id(color)
             if cid is None:
                 return self.COLOR_ERROR
-        else:                                       # her scheme: classes flamingo, audits grape, exams tomato
+        else:                                       # her scheme: holds graphite, exams tomato, classes flamingo
             cid = self.colors.pick(title) if self.colors else None
         target = self._calendar_id(calendar)
         if isinstance(target, str):
@@ -612,6 +614,10 @@ class ChatOps:
         e = self._pick_event(query, series_ok=all_occurrences)
         if isinstance(e, str):
             return e
+        hold = self.colors.hold if self.colors else None
+        if is_hold(e.title) and (not hold or cid != color_id(hold)):   # her convention (2026-10-06): a hold keeps its color
+            return (f"nothing changed: {e.title} is a hold, and holds stay {hold or 'as they are'}. "
+                    "once it's confirmed, take 'HOLD:' out of its title and i can recolor it")
         series = bool(all_occurrences and e.recurring_id)
         target = e.recurring_id if series else e.id
         if series:
@@ -698,7 +704,9 @@ class ChatOps:
         if self.ed is None:
             return "ed isn't connected yet (ED_API_TOKEN in .env)"
         try:
-            ed_course = match_course(self.ed.courses(), code)
+            ed_courses = self.ed.courses()
+            names = [code, *(alias for alias, c in self.course_aliases.items() if c == code)]   # EE 160A is "AA 174A 01" on Ed
+            ed_course = next((m for m in (match_course(ed_courses, n) for n in names) if m), None)
             if ed_course is None:
                 return f"i can't find {code} on ed"
             threads = self.ed.threads(ed_course.id, limit=40)
@@ -755,20 +763,28 @@ class ChatOps:
     # ----------------------------------------------------------------------
 
     def context_block(self) -> str:
-        graded = [c for c in self.courses if c not in self.audit_codes]
+        also: dict[str, list[str]] = {}
+        for alias, code in self.course_aliases.items():
+            also.setdefault(code, []).append(alias)
+
+        def named(c: str) -> str:
+            return f"{c} (also {', '.join(also[c])})" if c in also else c
+
+        graded = [named(c) for c in self.courses if c not in self.audit_codes]
         lines = [   # nothing here may change minute to minute: the whole block is part of the provider's cached prefix
             f"timezone: {str(self.tz).lower()}",
             f"courses: {', '.join(graded)}",
         ]
         if self.audit_codes:
-            also = {}
-            for alias, code in self.course_aliases.items():
-                also.setdefault(code, []).append(alias)
-            audits = [f"{c} (also {', '.join(also[c])})" if c in also else c for c in self.courses if c in self.audit_codes]
+            audits = [named(c) for c in self.courses if c in self.audit_codes]
             lines.append(f"auditing (not graded; no nudges or synced assignments): {', '.join(audits)}")
+        def dated(pairs):
+            return ", ".join(f"{code} ({on.strftime('%b %-d').lower()})" if on else code for code, on in pairs)
+
         if self.dropped:
-            gone = [f"{code} ({on.strftime('%b %-d').lower()})" if on else code for code, on in self.dropped]
-            lines.append(f"dropped: {', '.join(gone)}")
+            lines.append(f"dropped: {dated(self.dropped)}")
+        if self.ended_audits:
+            lines.append(f"stopped auditing (no more audits): {dated(self.ended_audits)}")
         facts = self.store.facts()
         if facts:
             lines.append("things faith told me to remember:")

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-06 (evening: classes and holds)
+- Auditing is over: EE 227 (CS 227A), EE 260A and AA 274A left the class list and moved to `dropped:` with
+  `audit: true`; juno says "stopped auditing" for them. Their Todoist projects were already archived.
+- EE 160A on Canvas (231155, checked read-only: her enrollment is the EE 160A section of the shared AA 174A /
+  CS 137A / EE 160A site); aliases AA 174A and CS 137A, so Ed ("AA 174A 01", 106110) and chat find it. Gradescope
+  (1396967) already matched by code. New `canvas_events: false` keeps its 55 Canvas calendar events off her
+  calendar until she decides. The class check now knows a configured Canvas id whatever code Canvas shows.
+- HOLD events ("HOLD: <Name> (<Org>)") are graphite in her scheme (`calendar.colors.hold`), ahead of exam and
+  class colors, and `color_event` refuses to recolor a hold to anything else. Audit color (grape) removed.
+- Persona and tool docs updated (no audits, holds, cross-listed codes). `docs/15-classes-and-holds.md`.
+  Tests first; 327 tests. Not deployed.
+
 ## 2026-10-06
 - Outlook meetings are added to the Stanford calendar on their own (tentative invites too), with a text listing what
   was added or linked; a heads-up 30 min before each Outlook meeting (read from Google, so series and her own copies

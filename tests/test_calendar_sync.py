@@ -113,6 +113,18 @@ async def test_after_first_run_new_and_moved_events_are_applied_and_texted(tmp_p
     assert len(out.sent) == 2
 
 
+async def test_a_course_with_canvas_events_off_keeps_its_events_off_her_calendar(tmp_path):
+    """EE 160A (2026-10-06): its assignments sync from Canvas, but its 55 Canvas events (lectures, office hours,
+    both section groups) wait until Faith says she wants them."""
+    sync, store, cal, out, box = make_sync(tmp_path, [cev(884165, 24, 16, 30), cev(900001, 24, 9, 30, title="Lecture 5", course=231155)], [])
+    sync.courses_cfg = CoursesConfig.model_validate({"courses": [
+        {"code": "EE 310", "canvas_id": 230601}, {"code": "EE 160A", "canvas_id": 231155, "canvas_events": False}]})
+    assert set(sync.courses_cfg.by_canvas_id()) == {230601, 231155}                 # the assignments sync reads both
+    store.kv_set("calendar_first_run_done", "1")
+    await sync.run()
+    assert [e.title for e in cal.events.values()] == ["SystemX: Ubiquitous Sensing, Computing and Communication Seminar"]
+
+
 async def test_declined_first_run_is_not_repeated_until_canvas_changes(tmp_path):
     sync, store, cal, out, box = make_sync(tmp_path, [cev(884165, 24, 16, 30)], [])
     await sync.run()

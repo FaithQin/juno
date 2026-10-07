@@ -1,6 +1,8 @@
 """Event colors (Faith, 2026-10-03): by name in chat, and her scheme applied to events juno adds.
 
 Her Stanford calendar, read that day: classes and sections Flamingo, audited classes Grape, exams Tomato.
+2026-10-06: auditing is over (Grape unused), and HOLD markers ("HOLD: <Name> (<Org>)") are Graphite, set
+apart from confirmed meetings (Banana); juno never recolors a hold.
 """
 
 from datetime import date, datetime
@@ -11,9 +13,9 @@ from assistant.colors import ColorScheme, color_id, color_name
 from test_chat_ops import make_ops
 
 TZ = ZoneInfo("America/Los_Angeles")
-SCHEME = ColorScheme(klass="flamingo", audit="grape", exam="tomato",
-                     courses=["ENGR 40M", "CME 102", "EE 100", "CS 106B", "EE 160A"],
-                     audits=["EE 227", "CS 227A", "EE 260A", "AA 274A", "AA 174A"])
+SCHEME = ColorScheme(klass="flamingo", exam="tomato", hold="graphite",
+                     courses=["ENGR 40M", "CME 102", "EE 100", "CS 106B", "EE 160A", "AA 174A", "CS 137A"])
+AUDITING = ColorScheme(klass="flamingo", audit="grape", exam="tomato", courses=["EE 160A"], audits=["EE 227", "CS 227A"])
 
 
 def test_color_id_takes_google_names_plain_words_and_default():
@@ -27,10 +29,37 @@ def test_color_id_takes_google_names_plain_words_and_default():
 def test_the_scheme_reads_the_kind_of_event_from_its_title():
     assert SCHEME.pick("MIDTERM 1 — CME 102") == "11"
     assert SCHEME.pick("EE 260A Midterm (only if enrolled)") == "11"                 # exams first, whatever the course
-    assert SCHEME.pick("CS 227A (audit) — Robot Perception, Shuran Song") == "3"
-    assert SCHEME.pick("AA 274A lecture") == "3"
     assert SCHEME.pick("CS 106B Section") == "4" and SCHEME.pick("EE 160A") == "4" and SCHEME.pick("cs106b review") == "4"
+    assert SCHEME.pick("AA 174A lecture") == "4"                                     # EE 160A's cross-listed code
     assert SCHEME.pick("Lunch with Alanood") is None and SCHEME.pick("Final Cut Pro workshop") is None
+
+
+def test_no_audit_color_once_auditing_is_over():
+    assert SCHEME.pick("CS 227A (audit) — Robot Perception, Shuran Song") is None
+    assert SCHEME.pick("EE 160A lecture (audit row)") == "4"                         # the word alone no longer means grape
+    assert AUDITING.pick("CS 227A (audit) — Robot Perception") == "3" and AUDITING.pick("EE 227 lecture") == "3"   # still works if she audits again
+
+
+def test_a_hold_is_graphite_whatever_else_its_title_says():
+    assert SCHEME.pick("HOLD: Nathan (Andrews Cooper)") == "8"
+    assert SCHEME.pick("HOLD: CME 102 midterm review (TA)") == "8"                   # not tomato, not flamingo
+    assert SCHEME.pick("hold: Prof. Kennedy (ARMLab)") == "8" and SCHEME.pick("  HOLD : Isha (StartX)") == "8"
+    assert SCHEME.pick("Holden's birthday") is None and SCHEME.pick("Placeholder: EE 100 reading") == "4"
+    assert ColorScheme(hold=None).pick("HOLD: Nathan (Andrews Cooper)") is None
+
+
+def test_the_repo_config_colors_holds_graphite_and_has_no_audit_color():
+    from pathlib import Path
+
+    from assistant.app import color_scheme
+    from assistant.config import load_app_config, load_courses
+
+    root = Path(__file__).resolve().parents[1]
+    app_cfg = load_app_config(root / "assistant.yaml")
+    assert (app_cfg.calendar.colors.hold, app_cfg.calendar.colors.audit) == ("graphite", None)
+    scheme = color_scheme(app_cfg, load_courses(root / "courses.yaml"))
+    assert scheme.pick("HOLD: Nathan (Andrews Cooper)") == "8"
+    assert scheme.pick("AA 174A Lecture 6 - Trajectory Tracking") == "4" and scheme.pick("EE 227 lecture") is None
 
 
 def sections(month, day):
@@ -83,3 +112,31 @@ def test_a_deleted_event_comes_back_with_its_color(tmp_path):
     ops.undo()
     (back,) = cal.events.values()
     assert back.color_id == "4"
+
+
+def hold(day=24, hour=13, color="8"):
+    return Event("HOLD: Nathan (Andrews Cooper)", datetime(2026, 9, day, hour, 30, tzinfo=TZ), datetime(2026, 9, day, hour + 1, 0, tzinfo=TZ),
+                 None, False, "Stanford", id=f"hold{day}", calendar_id="cal-stanford", color_id=color)
+
+
+def test_add_event_makes_a_hold_graphite(tmp_path):
+    ops, store, cal = ops_with(tmp_path)
+    assert ops.add_event("HOLD: Nathan (Andrews Cooper)", "2026-09-24T13:30", end="2026-09-24T14:00", calendar="Stanford") == \
+        "added: HOLD: Nathan (Andrews Cooper), thu sep 24 1:30–2:00pm (Stanford, graphite)"
+    (body,) = cal.bodies.values()
+    assert body["colorId"] == "8"
+
+
+def test_color_event_never_recolors_a_hold(tmp_path):
+    ops, store, cal = ops_with(tmp_path, {date(2026, 9, 24): [hold(24, 13)]})
+    for color in ("banana", "default", "tomato"):
+        assert ops.color_event("nathan", color) == ("nothing changed: HOLD: Nathan (Andrews Cooper) is a hold, and holds stay graphite. "
+                                                    "once it's confirmed, take 'HOLD:' out of its title and i can recolor it")
+    assert cal.patches == [] and store.last_undoable() is None
+    assert next(iter(cal.events.values())).color_id == "8"
+
+
+def test_color_event_may_still_set_a_hold_to_graphite(tmp_path):
+    ops, store, cal = ops_with(tmp_path, {date(2026, 9, 24): [hold(24, 13, color=None)]})
+    assert ops.color_event("nathan", "grey") == "colored HOLD: Nathan (Andrews Cooper) graphite (thu sep 24 1:30–2:00pm)"
+    assert cal.patches[-1] == ("cal-stanford", "hold24", {"colorId": "8"})

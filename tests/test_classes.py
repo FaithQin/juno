@@ -1,6 +1,9 @@
-"""Faith's class changes (2026-10-03): EE 160A is a graded class; EE 227 (CS 227A), EE 260A and AA 274A
+"""Faith's class changes. 2026-10-03: EE 160A is a graded class; EE 227 (CS 227A), EE 260A and AA 274A
 are audits; MATSCI 88Q and EE 310 were dropped. juno knows all of them, syncs and nudges only graded
-ones, and says so once when Canvas or Todoist shows a class it doesn't know."""
+ones, and says so once when Canvas or Todoist shows a class it doesn't know.
+
+2026-10-06: auditing is over ("im done auditing lectures"), so the three audits moved to the dropped
+list as ended audits, and EE 160A got its Canvas site (231155, shared with AA 174A and CS 137A)."""
 
 import json
 from datetime import date, datetime, timezone
@@ -40,14 +43,18 @@ def test_courses_config_knows_graded_audited_and_dropped_classes():
 
 
 def test_the_repo_courses_yaml_matches_her_classes():
+    """Her graded load on 2026-10-06, 20 units: CS 106B, CME 102, ENGR 40M, EE 100, EE 160A. No audits."""
     cfg = load_courses(REPO_COURSES)
-    assert [c.code for c in cfg.graded()] == ["ENGR 40M", "CME 102", "EE 100", "CS 106B", "EE 160A"]
-    assert [c.code for c in cfg.audits()] == ["EE 227", "EE 260A", "AA 274A"]
-    assert cfg.alias_map() == {"CS 227A": "EE 227", "AA 174A": "AA 274A"}
-    assert {d.code for d in cfg.dropped} == {"MATSCI 88Q", "EE 310"}
+    assert [c.code for c in cfg.courses] == ["ENGR 40M", "CME 102", "EE 100", "CS 106B", "EE 160A"]
+    assert cfg.audits() == []
+    assert cfg.alias_map() == {"AA 174A": "EE 160A", "CS 137A": "EE 160A"}           # one Canvas site, three codes
+    assert [(d.code, d.audit) for d in cfg.dropped] == [("MATSCI 88Q", False), ("EE 310", False),
+                                                        ("EE 227", True), ("EE 260A", True), ("AA 274A", True)]
+    assert {d.dropped_on for d in cfg.dropped if d.audit} == {date(2026, 10, 6)}
     assert cfg.course_projects()["EE 160A"] == "6hg9Mmh6R7Q68H7M"
-    assert cfg.course_projects()["EE 227"] == "6hg9Mmj286JqGMgF" and cfg.course_projects()["EE 260A"] == "6hg9Mmgm86G5FPJJ"
-    assert set(cfg.by_canvas_id()) == {231533, 232579, 232825}                      # Canvas syncs graded classes only
+    assert set(cfg.by_canvas_id()) == {231533, 232579, 232825, 231155}               # EE 160A's assignments sync now
+    assert cfg.by_canvas_id()[231155].code == "EE 160A"
+    assert set(cfg.calendar_courses()) == {231533, 232579, 232825}                   # its 55 Canvas events wait for her say
 
 
 def ops_for_classes(tmp_path, tasks=()):
@@ -144,3 +151,64 @@ async def test_the_class_check_texts_each_change_once(tmp_path):
     box["canvas"] = CANVAS_NOW                                                        # gone again: forgotten, so a return is news
     await watch.run()
     assert json.loads(store.kv_get("course_watch_seen")) == []
+
+
+# --- 2026-10-06: audits ended, EE 160A on Canvas --------------------------------------------------
+
+ENDED = CoursesConfig.model_validate({
+    "todoist": {"project_id": "CLASSES"},
+    "courses": [{"code": "ENGR 40M", "canvas_id": 231533, "project_id": "P-ENGR"},
+                {"code": "EE 160A", "canvas_id": 231155, "aliases": ["AA 174A", "CS 137A"], "canvas_events": False, "project_id": "P-160A"}],
+    "dropped": [{"code": "MATSCI 88Q", "dropped_on": "2026-09-30"},
+                {"code": "EE 227", "aliases": ["CS 227A"], "dropped_on": "2026-10-06", "audit": True},
+                {"code": "AA 274A", "dropped_on": "2026-10-06", "audit": True}],
+})
+
+
+def test_ended_audits_are_history_not_classes():
+    assert [c.code for c in ENDED.courses] == ["ENGR 40M", "EE 160A"] and ENDED.audits() == []
+    assert [(d.code, d.audit, d.aliases) for d in ENDED.dropped] == [
+        ("MATSCI 88Q", False, []), ("EE 227", True, ["CS 227A"]), ("AA 274A", True, [])]
+    assert set(ENDED.by_canvas_id()) == {231533, 231155} and set(ENDED.calendar_courses()) == {231533}
+
+
+def test_the_context_says_she_stopped_auditing_rather_than_dropped(tmp_path):
+    from assistant.app import course_kwargs
+
+    ops, *_ = make_ops(tmp_path, [])
+    kw = course_kwargs(ENDED)
+    ops.courses, ops.audit_codes, ops.course_aliases = kw["courses"], set(kw["audits"]), kw["aliases"]
+    ops.dropped, ops.ended_audits = kw["dropped"], kw["ended_audits"]
+    ctx = ops.context_block().splitlines()
+    assert "courses: ENGR 40M, EE 160A (also AA 174A, CS 137A)" in ctx              # cross-listed codes of a graded class
+    assert not any(line.startswith("auditing") for line in ctx)
+    assert "dropped: MATSCI 88Q (sep 30)" in ctx
+    assert "stopped auditing (no more audits): EE 227 / CS 227A (oct 6), AA 274A (oct 6)" in ctx
+
+
+def test_the_class_check_knows_a_canvas_site_by_its_id_whatever_code_canvas_shows():
+    """Canvas names the shared Robot Autonomy site after its first listing, cut short: "F26-AA-174A-01..."."""
+    canvas = [(231533, "F26-ENGR-40M-01", "An Intro to Making: What is EE"), (231155, "F26-AA-174A-01...", "Principles of Robot Autonomy I")]
+    no_alias = CoursesConfig.model_validate({"courses": [{"code": "ENGR 40M", "canvas_id": 231533}, {"code": "EE 160A", "canvas_id": 231155}]})
+    assert find_changes(canvas_courses=canvas, projects=[], courses_cfg=no_alias, parent_id="CLASSES") == []
+    gone_audit = [(231675, "F26-EE-227-01/CS-227A-01", "Robot Perception")]           # an ended audit's site, if it lingers
+    assert find_changes(canvas_courses=canvas + gone_audit, projects=[], courses_cfg=ENDED, parent_id="CLASSES") == []
+
+
+def test_ed_finds_a_class_under_its_cross_listed_code(tmp_path):
+    """Ed lists EE 160A's forum as "AA 174A 01" (course 106110)."""
+    from assistant.ed import EdCourse
+
+    class Ed:
+        def courses(self):
+            return [EdCourse(106894, "AA 274A 01", "Principles of Robot Autonomy I", "active", "2026", "Autumn"),
+                    EdCourse(106110, "AA 174A 01", "Principles of Robot Autonomy I", "active", "2026", "Autumn")]
+
+        def threads(self, course_id, *, limit=30, sort="new"):
+            assert course_id == 106110
+            return []
+
+    ops, *_ = make_ops(tmp_path, [])
+    ops.courses, ops.course_aliases, ops.ed = ["EE 160A"], {"AA 174A": "EE 160A", "CS 137A": "EE 160A"}, Ed()
+    assert ops.ed_announcements("ee 160a") == "no announcements or pinned posts in EE 160A right now"
+    assert ops.ed_announcements("cs 137a") == "no announcements or pinned posts in EE 160A right now"

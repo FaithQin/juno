@@ -83,7 +83,8 @@ class Course(BaseModel):
     section: str | None = None     # legacy (no project_id): override the section name inside Classes
     website: str | None = None     # public course site to scrape (phase 2)
     audit: bool = False            # auditing: juno knows it (chat, Ed, its Todoist project) but syncs nothing and never nudges
-    aliases: list[str] = Field(default_factory=list)   # other codes for the same class, e.g. CS 227A for EE 227
+    aliases: list[str] = Field(default_factory=list)   # other codes for the same class, e.g. AA 174A for EE 160A
+    canvas_events: bool = True     # copy its Canvas calendar events to Google (the calendar sync); off = assignments only
 
     @property
     def section_name(self) -> str:
@@ -99,11 +100,14 @@ class TodoistConfig(BaseModel):
 
 
 class DroppedCourse(BaseModel):
-    """A class she dropped: kept so juno can say so, and so the class check stays quiet about it."""
+    """A class she dropped, or stopped auditing: kept so juno can say so, and so the class check stays
+    quiet about it."""
     model_config = ConfigDict(extra="forbid")
 
     code: str
     dropped_on: date | None = None   # not `on:`: YAML 1.1 reads a bare `on` key as the boolean true
+    audit: bool = False              # she was auditing it, never enrolled: juno says "stopped auditing", not "dropped"
+    aliases: list[str] = Field(default_factory=list)
 
 
 class CoursesConfig(BaseModel):
@@ -137,6 +141,10 @@ class CoursesConfig(BaseModel):
     def by_canvas_id(self) -> dict[int, Course]:
         """Courses the Canvas syncs read: graded ones with a Canvas site. Audits never sync."""
         return {c.canvas_id: c for c in self.courses if c.canvas_id is not None and not c.audit}
+
+    def calendar_courses(self) -> dict[int, Course]:
+        """The Canvas courses whose calendar events the calendar sync copies (not those with `canvas_events: false`)."""
+        return {cid: c for cid, c in self.by_canvas_id().items() if c.canvas_events}
 
     def course_projects(self) -> dict[str, str]:
         """Course code → its sub-project id (courses with one)."""
@@ -202,12 +210,13 @@ class GradescopeConfig(BaseModel):
 
 
 class EventColorScheme(BaseModel):
-    """Google color names for events juno adds (Faith's scheme, read from her calendar 2026-10-03)."""
+    """Google color names for events juno adds (Faith's scheme, read from her calendar 2026-10-03; holds 2026-10-06)."""
     model_config = ConfigDict(populate_by_name=True)
 
     klass: str | None = Field("flamingo", alias="class")   # classes and sections of graded courses
-    audit: str | None = "grape"                            # audited classes
+    audit: str | None = None                               # audited classes (none since 2026-10-06; was grape)
     exam: str | None = "tomato"                            # midterms, finals, exams, quizzes
+    hold: str | None = "graphite"                          # "HOLD: <Name> (<Org>)" markers; juno never recolors one
 
 
 class CalendarSyncConfig(BaseModel):

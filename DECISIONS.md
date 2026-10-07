@@ -289,3 +289,18 @@ question waited silently behind an unanswered duplicates question since Sep 28. 
 | "Faith + Nathan // Intro Call" (Oct 7) | **add it** (Faith): taken off `outlook_declined` so the first auto-add run copies and links it |
 | ChemE invites | **never copied** (Faith: "i'm no longer ChemE"): `outlook.skip: [ChemE, Chem-E, Chemical Engineering]` matches titles in any case (word list mine); the two colloquiums juno had copied were deleted. Leaving the department's list is hers to do (there is no ChemE Google calendar) |
 
+## Audits end, EE 160A on Canvas, holds graphite (2026-10-06)
+
+Faith: "im done auditing lectures so there will be no more of that"; her graded load is 20 units (CS 106B,
+CME 102, ENGR 40M, EE 100, EE 160A); HOLD markers are Graphite. Walkthrough: `docs/15-classes-and-holds.md`.
+
+| Decision | Choice |
+|---|---|
+| The three audits | **no longer classes** (Faith). Kept in `dropped:` with `audit: true` so juno says "stopped auditing" and the class check stays quiet (mine); the audit feature stays in the code, unused (mine) |
+| EE 160A on Canvas | **`canvas_id: 231155`** (Faith's calendar link; checked read-only: her enrollment is the EE 160A section of the shared AA 174A / CS 137A / EE 160A site) |
+| EE 160A's other codes | `aliases: [AA 174A, CS 137A]` from the Canvas sections, so Ed ("AA 174A 01") and chat find it (mine) |
+| EE 160A's 55 Canvas calendar events | **kept off her calendar** (`canvas_events: false`) until she says; the calendar sync would have added them all without asking (mine; **Faith to decide**) |
+| A Canvas site named after another listing | the class check knows a configured `canvas_id` whatever code Canvas shows (mine) |
+| HOLD events | **Graphite** (Faith); `HOLD:` at the start of a title beats exam and class colors in her scheme (mine) |
+| Recoloring a hold | **never** (Faith): `color_event` refuses any color but graphite for a hold, in code; an explicit color when juno *adds* an event still wins (mine) |
+| Audit color | removed from `assistant.yaml`; default `None` (Faith: "unused") |

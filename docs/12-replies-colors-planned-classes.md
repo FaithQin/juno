@@ -72,6 +72,9 @@ lives in `assistant.yaml` (`calendar.colors`). Against her next 30 days of event
 107 of 109; the two misses were social events she colored Banana by hand, which the scheme leaves
 alone. Synced copies (Canvas, Outlook) keep the calendar default.
 
+*Update 2026-10-06 (`docs/15-classes-and-holds.md`):* auditing ended, so there is no audit color any
+more, and `HOLD: <Name> (<Org>)` events are Graphite and never recolored.
+
 `color_event` recolors one occurrence, or with `all_occurrences` the whole series: an occurrence
 carries `recurringEventId`, and patching that id changes every occurrence. Setting the default
 sends `colorId: null`, which Google's patch semantics treat as "clear". Undo restores the old color;
@@ -107,6 +110,10 @@ added), audits (`audit: true`: EE 227 with alias CS 227A, EE 260A, AA 274A with 
 `by_canvas_id()` and the Gradescope sync skip them and `nudge_tasks()` leaves them out; the brief tags
 their tasks "(audit)". The context block tells the model which is which, and aliases resolve ("cs 227a"
 → EE 227).
+
+*Update 2026-10-06 (`docs/15-classes-and-holds.md`):* the audits ended; EE 227, EE 260A and AA 274A
+moved to `dropped:` with `audit: true`, and EE 160A got its Canvas site (231155) and the aliases
+AA 174A and CS 137A.
 
 A YAML lesson on the way: the dropped date was first written `on: 2026-09-30`, and PyYAML read the key
 `on` as the boolean `true` (YAML 1.1 treats on/off/yes/no as booleans). The field is `dropped_on`.

@@ -103,9 +103,8 @@ def test_the_repo_courses_yaml_ships_every_course_with_its_sub_project():
         "EE 100": "6hcWWXGX4RFgHc5C",
         "CS 106B": "6hcWWXHRpx3H2RvF",
         "EE 160A": "6hg9Mmh6R7Q68H7M",
-        "EE 227": "6hg9Mmj286JqGMgF",
-        "EE 260A": "6hg9Mmgm86G5FPJJ",
-    }
+    }                                                                   # EE 227 and EE 260A: audits ended 2026-10-06, projects archived
     assert {c.code: c.canvas_id for c in cfg.courses}["CS 106B"] is None
-    # Dropped courses stay out of the sync: MATSCI 88Q (Sep 30, 2026) and EE 310 (Oct 2, 2026).
-    assert not {"MATSCI 88Q", "EE 310"} & {c.code for c in cfg.courses}
+    # Dropped courses and ended audits stay out of the sync: MATSCI 88Q (Sep 30, 2026), EE 310 (Oct 2, 2026),
+    # EE 227, EE 260A, AA 274A (Oct 6, 2026).
+    assert not {"MATSCI 88Q", "EE 310", "EE 227", "EE 260A", "AA 274A"} & {c.code for c in cfg.courses}

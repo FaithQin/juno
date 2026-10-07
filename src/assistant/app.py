@@ -70,18 +70,20 @@ def _ed_client(settings: Settings) -> EdClient | None:
 
 def course_kwargs(courses_cfg: CoursesConfig) -> dict:
     """What ChatOps needs to know about her classes: every code it should recognise, which are
-    audits, the aliases, and the dropped ones (so juno can say she dropped them)."""
+    audits, the aliases, the dropped ones (so juno can say she dropped them) and the audits she
+    stopped (so it says that instead)."""
     return {
         "courses": [c.code for c in courses_cfg.courses],
         "audits": [c.code for c in courses_cfg.audits()],
         "aliases": courses_cfg.alias_map(),
-        "dropped": [(d.code, d.dropped_on) for d in courses_cfg.dropped],
+        "dropped": [(d.code, d.dropped_on) for d in courses_cfg.dropped if not d.audit],
+        "ended_audits": [(" / ".join([d.code, *d.aliases]), d.dropped_on) for d in courses_cfg.dropped if d.audit],
     }
 
 
 def color_scheme(app_cfg: AppConfig, courses_cfg: CoursesConfig) -> ColorScheme:
     colors = app_cfg.calendar.colors
-    return ColorScheme(klass=colors.klass, audit=colors.audit, exam=colors.exam,
+    return ColorScheme(klass=colors.klass, audit=colors.audit, exam=colors.exam, hold=colors.hold,
                        courses=[code for c in courses_cfg.graded() for code in [c.code, *c.aliases]],
                        audits=[code for c in courses_cfg.audits() for code in [c.code, *c.aliases]])
 
@@ -89,7 +91,7 @@ def color_scheme(app_cfg: AppConfig, courses_cfg: CoursesConfig) -> ColorScheme:
 def build_calendar_sync(rt: "Runtime", send) -> CalendarSync:
     from canvasapi import Canvas
 
-    codes = [f"course_{cid}" for cid in rt.courses_cfg.by_canvas_id()]          # graded courses on Canvas
+    codes = [f"course_{cid}" for cid in rt.courses_cfg.calendar_courses()]      # graded courses on Canvas, events wanted
 
     def fetch_events(start: datetime, end: datetime):
         api = Canvas(rt.settings.canvas_url, rt.settings.canvas_token)

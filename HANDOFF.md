@@ -1,25 +1,28 @@
-# Handoff — state as of 2026-10-06 (~17:45 PDT, after Outlook auto-add and tasks outside classes)
+# Handoff — state as of 2026-10-06 (~18:45 PDT, after the classes-and-holds change; **not deployed**)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
 
 ## What is live (verified on the server; last deploy `e21039a`, 2026-10-06 17:37 PDT)
+**On `main` but not deployed:** the classes-and-holds change (no audits, EE 160A on Canvas, holds graphite);
+rows marked *after deploy* describe it. See Pending for the deploy note.
+
 | Piece | Cadence | Notes |
 |---|---|---|
 | Canvas → Todoist sync | hourly | adopted 52 hand-made tasks on 2026-09-22; batches same-day quizzes; retries transient errors |
 | Gradescope → Todoist | every 3 h | via saved browser login; first run approved 2026-09-24; proposals asked once. **New:** an assignment that plausibly is a hand-made task (same course + number + pre/post/lab/pset words + due within 2 days) is **asked about** (`gradescope_match`), held back until she answers; yes links, no creates. `docs/11-hand-made-and-twins.md` |
 | **Canvas ↔ Gradescope twins** | with both syncs | a Canvas external tool names its Gradescope assignment (`custom_gradescope_resource_id`); both ids now link to one task, whichever side comes first. Pairings kept in `kv["gradescope_twins"]` (written by the Canvas sync) |
-| Canvas events → Stanford calendar | hourly | first-run proposal **re-asked once** at the next run (see Pending) |
-| Nudges: 8pm the evening before, 2h before | scan every 10 min | late ones say "i was offline"; a Todoist blip skips one scan quietly. **Planned work** (a Todoist deadline field, a duration, or "block" in the title) gets **one heads-up 10 min before a timed start** instead ("starting 3:00pm: … (1h · deadline thu)"). **Audited classes get none.** |
+| Canvas events → Stanford calendar | hourly | first run done (`kv calendar_first_run_done = 1`, read on the server 2026-10-06): a new Canvas event is **added without asking** and texted. Only an old course (230601) has linked events; *after deploy* reads `calendar_courses()` (EE 160A has `canvas_events: false`) |
+| Nudges: 8pm the evening before, 2h before | scan every 10 min | late ones say "i was offline"; a Todoist blip skips one scan quietly. **Planned work** (a Todoist deadline field, a duration, or "block" in the title) gets **one heads-up 10 min before a timed start** instead ("starting 3:00pm: … (1h · deadline thu)"). Audited classes get none (*after deploy:* there are none). |
 | Morning brief | 07:00 daily | every dated Todoist task + calendars Stanford/TA/primary/StartX/Cal.com; waits ~10 min through a Todoist outage, then says so. Sections: **due today** (incl. planned work whose Todoist deadline is today) / **planned today** / due tomorrow / overdue ("planned fri" for missed plans); audit tasks tagged "(audit)" |
 | Telegram chat (`gpt-6-sol`, low reasoning) | on message | tasks, events, web, browser, Ed, `sync_now`, undo, photos, `answer_proposal`, `/status`. **Since 2026-10-03:** a Telegram reply carries the quoted message; a reply yes/no to a proposal's message answers it, **only if that message was sent after the waiting question was asked** (a reply to an older, replaced question gets "nothing done: that question was replaced on …" + the current one, in code; 2026-10-04); every text juno sends on its own is kept in the conversation (`telegram:outbox` stream); web citations stripped unless she asks for sources; `get_tasks` lists due and planned separately; `add_task` takes `duration_minutes` + `deadline` for work blocks, and (2026-10-06) a `project` for tasks outside her classes ("one-off tasks", "ssig"; without one it asks which); `color_event` and `add_event(color=)` with her scheme applied automatically |
 | Completion tracking | with each sync | submitted work ticks the task; quizzes done inside a batch get a ✅ on their checklist line |
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-10-02), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`. **Since 2026-10-06:** new items (incl. tentative invites) are **added without asking** and juno texts what it added or linked; items she said no to before stay off; ended meetings skipped; **heads-up 30 min before each Outlook meeting** (read from Google, so series and her own copies work). Never waits on another question. **Skips titles with ChemE / Chem-E / Chemical Engineering** (`outlook.skip`; she left ChemE). `sync_now("outlook")`; `assistant outlook --print`. `docs/13-outlook-auto-add-and-projects.md` |
 | **Duplicate check** | after every hourly Canvas sync + "check for duplicates" | proposed for deletion (undoable, links and **her notes** move to the kept task); keeps the task that ticks on submission. **Narrowed 2026-10-03:** same title in a project with due dates ≤ 1 day apart, *except* the same clock time on different days (a habit); a shared assignment link only with the same title or both names just the assignment's name reworded (`assignment_named`: "Lab 1 prelab" = "Prelab 1", work blocks never); Canvas-Gradescope twins by id. A pending duplicates question it no longer finds withdraws itself. `docs/10-duplicates.md` §4, `docs/11-…` |
-| **Classes** (`courses.yaml`, 2026-10-03) | — | **Graded:** ENGR 40M, CME 102, EE 100 (synced from Canvas), CS 106B (Paperless/Gradescope; its Canvas site is empty), **EE 160A** (added; no Canvas/Gradescope/Ed site yet). **Audits** (`audit: true`: known for chat/Ed/Todoist, never synced, never nudged): EE 227 (alias CS 227A), EE 260A, AA 274A (alias AA 174A, no Todoist project). **Dropped:** MATSCI 88Q (Sep 30), EE 310 (Oct 2; its archived project still holds 3 open tasks, invisible to juno). Each class's tasks live in its sub-project under Classes (`6cXPJPmRH6GF2MPr`). After the deploy: `assistant check` 7 sub-projects ok + AA 274A "audit, no Todoist project", 95 active class tasks; dry-run sync read only the 3 graded Canvas courses, "nothing to change" |
-| **Class check** | daily 09:30 | texts once about a Canvas course or a Todoist project under Classes that `courses.yaml` doesn't know, or a synced course Canvas no longer lists; quiet when nothing changed (it found nothing on 2026-10-03). `course_watch.py`; state `kv["course_watch_seen"]` |
-| **Event colors** | when juno adds an event | her scheme from `assistant.yaml` `calendar.colors`: classes/sections flamingo, audits grape, exams tomato, else default; agreed with 107 of her next 109 Stanford events (the 2 misses: social events she colored banana by hand). Canvas/Outlook copies stay default |
+| **Classes** (`courses.yaml`) | — | *Live (2026-10-03 config):* graded ENGR 40M, CME 102, EE 100, CS 106B, EE 160A (no Canvas); audits EE 227, EE 260A, AA 274A. *After deploy (2026-10-06, Faith: "im done auditing lectures"; 20 units):* **graded only:** ENGR 40M, CME 102, EE 100 (Canvas), CS 106B (Paperless/Gradescope), **EE 160A** (Canvas **231155**, the shared AA 174A / CS 137A / EE 160A site, her enrollment is the EE 160A section; aliases AA 174A, CS 137A; Gradescope 1396967 by code; Ed 106110 "AA 174A 01" via the alias; **`canvas_events: false`**: its 55 Canvas calendar events stay off Google until she says). **Dropped:** MATSCI 88Q (Sep 30), EE 310 (Oct 2); **ended audits** (`audit: true` in `dropped:`): EE 227 / CS 227A, EE 260A, AA 274A (Oct 6). EE 227 and EE 260A's Todoist projects are archived (5 open tasks each, invisible to juno). Read-only `check` with the new config: 5 sub-projects ok, 91 active class tasks. `docs/15-classes-and-holds.md` |
+| **Class check** | daily 09:30 | texts once about a Canvas course or a Todoist project under Classes that `courses.yaml` doesn't know, or a synced course Canvas no longer lists (*after deploy:* a configured `canvas_id` counts as known whatever code Canvas shows, e.g. "F26-AA-174A-01..."); quiet when nothing changed (it found nothing on 2026-10-03). `course_watch.py`; state `kv["course_watch_seen"]` |
+| **Event colors** | when juno adds an event | her scheme from `assistant.yaml` `calendar.colors`: classes/sections flamingo, audits grape, exams tomato, else default; agreed with 107 of her next 109 Stanford events. *After deploy:* **holds (`HOLD: <Name> (<Org>)`) graphite** ahead of everything, **no audit color**, and `color_event` refuses to recolor a hold to anything but graphite (code gate). Canvas/Outlook copies stay default; no sync ever writes a color |
 
 ## Todoist move (2026-09-24, ~17:00 PDT, done)
 - Faith asked for each class as its own sub-project under Classes. 68 open tasks and the 5 completed tasks
@@ -44,6 +47,19 @@ what to do next. **Update it at the end of every working session.**
 - Details and reasoning: `docs/07-hardening.md`; decisions: `DECISIONS.md` (2026-09-24 night).
 
 ## Pending right now
+- **Deploy the classes-and-holds change** (on `origin/main`, not deployed; Faith said not to touch her calendar or Todoist,
+  so nothing was run against them). The main checkout's local `main` is behind `origin/main`: `git pull` there before
+  `scripts/deploy.sh`, or it would ship the old code. What the deploy changes: no audit lines in juno's context
+  ("stopped auditing" instead); the Canvas sync reads EE 160A (its only Canvas assignment is already submitted, so
+  nothing new today); EE 160A's Canvas calendar events are **not** copied (`canvas_events: false`).
+- **Faith to decide: EE 160A's Canvas calendar.** 55 events in the next 120 days (lectures, CA office hours, both
+  section groups, homework releases). With `canvas_events: true` the next calendar run adds them all to Stanford
+  without asking (the first run finished long ago). Off until she says.
+- **Faith to know: two HW2 tasks in EE 160A** (read-only check, 2026-10-06): her "EE 160A: HW2 (Gradescope) (check date)"
+  and the Gradescope sync's "EE 160A: Homework 2 (Gradescope)" (linked to Gradescope 1396967). Same kind of miss as
+  the Lab 1 prelab: `gradescope_match` didn't ask. Not touched. Whether the duplicate check proposes it wasn't checked.
+- **Unverified live:** no `HOLD:` event exists on her Stanford calendar yet (Sep–Dec, read-only), so the graphite rule
+  follows her stated format only.
 - **2026-10-06 incident: the Human Capital interview (Tue Oct 6, 1:45pm, a tentative Outlook invite) never reached Faith.**
   The Outlook job could only *ask*, and its question had waited silently behind an unanswered duplicates question since
   Sep 28; the brief and nudges never read Outlook. Fixed in code (auto-add + 30-min heads-up, Faith's choice); see
@@ -137,6 +153,7 @@ what to do next. **Update it at the end of every working session.**
 0. **No silent queue.** Gradescope-match and Canvas-calendar questions still wait without a word behind another
    question; at least the brief should say "a question is waiting since …" (the Outlook incident's second cause).
 1. Let juno change its own class list from chat ("add EE 101A as a class"); color Canvas/Outlook copies with her scheme.
+   Maybe: drop the dormant audit machinery (`Course.audit`, the "(audit)" brief tag) if she never audits again.
 2. The Canvas-side exact-title question (Pending, older notes).
 3. A mixed answer to a multi-item question ("yes to the first, no to the second"); today it's all or nothing.
 4. Canvas API tools for the pages she names (grades, modules, files).
@@ -144,8 +161,8 @@ what to do next. **Update it at the end of every working session.**
 6. CS 106B course-site scrape; iMessage via Photon; public-repo scrub; Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 316 passing).
-2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md` and `docs/12-replies-colors-planned-classes.md`.
+1. `uv sync && uv run pytest` (expect 327 passing).
+2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md`, `docs/12-replies-colors-planned-classes.md`, `docs/13-outlook-auto-add-and-projects.md` and `docs/15-classes-and-holds.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.
 4. Ask Faith what's next; don't start a phase without her answers to its scoping questions.

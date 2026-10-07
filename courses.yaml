@@ -13,7 +13,8 @@ todoist:
   project_name: "Classes"
 
 courses:
-  # Graded classes: synced from Canvas (canvas_id) and Gradescope (matched by code), nudged.
+  # Graded classes, 20 units (Faith, 2026-10-06): synced from Canvas (canvas_id) and Gradescope (matched by code), nudged.
+  # No audits any more ("im done auditing lectures", 2026-10-06); `audit: true` still works if that changes.
   - code: "ENGR 40M"
     canvas_id: 231533
     project_id: "6hcWWXF2wPQ63xGP"
@@ -27,25 +28,26 @@ courses:
     canvas_id: null          # its Canvas site (232548) is empty; assignments come from Paperless, the site and Gradescope
     website: "https://web.stanford.edu/class/cs106b/"
     project_id: "6hcWWXHRpx3H2RvF"
-  - code: "EE 160A"          # added 2026-10-03; no Canvas, Gradescope or Ed site yet (the class check will say when one appears)
+  - code: "EE 160A"          # Principles of Robot Autonomy I, 4 units. Sites checked read-only on 2026-10-06:
+    canvas_id: 231155        # one Canvas site for AA 174A / CS 137A / EE 160A; her enrollment is the EE 160A section
+    aliases: ["AA 174A", "CS 137A"]   # Canvas calls it "F26-AA-174A-01...", Ed "AA 174A 01" (course 106110); Gradescope 1396967 matches by code
+    canvas_events: false     # its Canvas calendar (55 events: lectures, CA office hours, both section groups) stays off Google until she says
     project_id: "6hg9Mmh6R7Q68H7M"
 
-  # Audits (Faith, 2026-10-03): juno knows them for chat, Ed and their Todoist projects, but pulls
-  # no assignments from Canvas or Gradescope and sends no nudges. Aliases are cross-listed codes.
-  - code: "EE 227"
-    aliases: ["CS 227A"]     # Robot Perception
-    audit: true
-    project_id: "6hg9Mmj286JqGMgF"
-  - code: "EE 260A"
-    audit: true
-    project_id: "6hg9Mmgm86G5FPJJ"
-  - code: "AA 274A"
-    aliases: ["AA 174A"]     # Principles of Robot Autonomy I; no Todoist project
-    audit: true
-
-# Dropped: juno says so if they come up, and the class check stays quiet about their leftovers.
+# Dropped classes and ended audits: juno says so if they come up, and the class check stays quiet about
+# their leftovers (EE 227 and EE 260A's Todoist projects are archived; their open tasks are invisible to juno).
 dropped:
   - code: "MATSCI 88Q"
     dropped_on: 2026-09-30
   - code: "EE 310"
     dropped_on: 2026-10-02
+  - code: "EE 227"           # Robot Perception
+    aliases: ["CS 227A"]
+    dropped_on: 2026-10-06
+    audit: true
+  - code: "EE 260A"
+    dropped_on: 2026-10-06
+    audit: true
+  - code: "AA 274A"          # the graduate listing of EE 160A's class
+    dropped_on: 2026-10-06
+    audit: true

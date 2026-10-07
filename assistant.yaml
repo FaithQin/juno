@@ -29,8 +29,9 @@ calendar:
   every_minutes: 60
   colors:                                # juno colors the events it adds (Faith, 2026-10-03); Google's color names
     class: flamingo                      # classes and sections of graded courses
-    audit: grape                         # audited classes
     exam: tomato                         # midterms, finals, exams, quizzes
+    hold: graphite                       # "HOLD: <Name> (<Org>)" markers (Faith, 2026-10-06); confirmed meetings are banana. juno never recolors a hold
+                                         # no audit color: she stopped auditing on 2026-10-06 (it was grape)
 
 outlook:
   target: Stanford                       # Google calendar that receives Outlook meetings

@@ -8,7 +8,9 @@ forgotten when it goes away, so a later return is news again.
 
 What counts as a difference:
   * a Canvas course with a real course code (F26-…) that no configured code, alias or dropped
-    code matches. Canvas's one-off modules (the honor-code course) have no such code;
+    code matches, and whose id isn't a configured `canvas_id` (a cross-listed site is named after
+    its first listing, cut short: EE 160A's is "F26-AA-174A-01..."). Canvas's one-off modules (the
+    honor-code course) have no such code;
   * a Todoist project directly under Classes that no course owns, unless it is named after a
     dropped course (its project may linger, empty or archived);
   * a graded course juno syncs from Canvas that Canvas no longer lists (probably dropped).
@@ -40,12 +42,13 @@ def find_changes(*, canvas_courses: list[tuple[int, str, str]], projects, course
                  parent_id: str) -> list[tuple[str, str]]:
     """(key, sentence) for each difference, in a stable order: Canvas, then Todoist, then gone."""
     known = {_squash(code) for c in courses_cfg.courses for code in [c.code, *c.aliases]}
-    known |= {_squash(d.code) for d in courses_cfg.dropped}
+    known |= {_squash(code) for d in courses_cfg.dropped for code in [d.code, *d.aliases]}
     known.discard("")
+    configured = {c.canvas_id for c in courses_cfg.courses if c.canvas_id is not None}
     out: list[tuple[str, str]] = []
     for cid, code, name in canvas_courses:
         m = COURSE_CODE_RE.match(code or "")
-        if not m or any(k in _squash(code) for k in known):
+        if not m or cid in configured or any(k in _squash(code) for k in known):
             continue
         out.append((f"canvas:{cid}", f"canvas lists {m[1]} {m[2]} ({name}), which juno doesn't know as a class"))
     owned = {c.project_id for c in courses_cfg.courses if c.project_id}

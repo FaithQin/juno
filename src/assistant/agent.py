@@ -113,7 +113,7 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
         Much cheaper than browsing Ed; use this first for anything about announcements.
 
         Args:
-            course: course code such as "CS 106B".
+            course: course code such as "CS 106B" (a cross-listed code like "AA 174A" works too).
             limit: how many to return (default 5).
         """
         return ctx.deps.ed_announcements(course, limit)
@@ -286,7 +286,7 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
             calendar: "Stanford" for classes and exams, "TA" for office hours and help sessions; omit for personal.
             notes: optional description.
             color: only if she names one ("green", "flamingo", "default"); otherwise leave it out and her
-                scheme applies (classes and sections flamingo, audits grape, exams tomato).
+                scheme applies (holds "HOLD: <Name> (<Org>)" graphite, exams tomato, classes and sections flamingo).
         """
         return ctx.deps.add_event(title, start, end=end, location=location, calendar=calendar, notes=notes, color=color)
 
@@ -299,6 +299,7 @@ def build_agent(model: str, *, persona: str | Callable[[], str], web_search: boo
             color: a Google color (lavender, sage, grape, flamingo, banana, tangerine, peacock, graphite,
                 blueberry, basil, tomato), a plain word like "green", or "default".
             all_occurrences: True to recolor every occurrence of a repeating event (a weekly class).
+        A HOLD event keeps graphite: this refuses any other color for one.
         """
         return ctx.deps.color_event(query, color, all_occurrences=all_occurrences)
 
