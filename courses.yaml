@@ -13,11 +13,10 @@ todoist:
   project_name: "Classes"
 
 courses:
-  # Graded classes, 20 units (Faith, 2026-10-06): synced from Canvas (canvas_id) and Gradescope (matched by code), nudged.
+  # Graded classes (Faith, 2026-10-07): synced from Canvas (canvas_id) and Gradescope (matched by code), nudged.
+  # Her study list is 18 units: these four (15) plus ME 191 (ARMLab, 3 units S/NC), which is deliberately not
+  # listed here: its tasks live in Research > ARMLab, outside Classes (her call, 2026-10-07).
   # No audits any more ("im done auditing lectures", 2026-10-06); `audit: true` still works if that changes.
-  - code: "ENGR 40M"
-    canvas_id: 231533
-    project_id: "6hcWWXF2wPQ63xGP"
   - code: "CME 102"
     canvas_id: 232579
     project_id: "6hcWWXF7PMmh57v2"
@@ -51,3 +50,5 @@ dropped:
   - code: "AA 274A"          # the graduate listing of EE 160A's class
     dropped_on: 2026-10-06
     audit: true
+  - code: "ENGR 40M"         # dropped 2026-10-07 for ARMLab (ME 191); she takes it in Spring 2027. Canvas 231533,
+    dropped_on: 2026-10-07   # Todoist sub-project 6hcWWXF2wPQ63xGP (archived)

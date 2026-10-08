@@ -315,3 +315,15 @@ CME 102, ENGR 40M, EE 100, EE 160A); HOLD markers are Graphite. Walkthrough: `do
 | HOLD events | **Graphite** (Faith); `HOLD:` at the start of a title beats exam and class colors in her scheme (mine) |
 | Recoloring a hold | **never** (Faith): `color_event` refuses any color but graphite for a hold, in code; an explicit color when juno *adds* an event still wins (mine) |
 | Audit color | removed from `assistant.yaml`; default `None` (Faith: "unused") |
+
+## ENGR 40M dropped, ME 191 stays outside Classes (2026-10-07)
+
+Faith joined Prof. Kennedy's ARMLab on Oct 7 (ME 191 section 28, 3 units S/NC, confirmed by Kennedy that evening) and
+dropped ENGR 40M to make room: it isn't required for the EE major and runs again in Spring 2027 at the same time.
+Her study list goes 20 → 15 → 18 units (CS 106B, CME 102, EE 100, EE 160A, ME 191).
+
+| Decision | Choice |
+|---|---|
+| ENGR 40M | **dropped** (Faith): moved to `dropped:` with `dropped_on: 2026-10-07`; no more Canvas, Gradescope or Canvas-calendar sync for 231533; its Todoist sub-project archived (Faith: "remove/archive all engr40m related") |
+| ME 191 / ARMLab in juno | **not a class** (Faith: "keep it in research but as its own separate project name it ARMLab"): no `courses.yaml` entry; its tasks live in Research › ARMLab (`6hhfR3JPGqGj76M6`), outside Classes, so the class check never sees it |
+| When the drop counts | the decision date, Oct 7, though the Axess drop happens by the Fri Oct 9 5 pm study-list deadline (mine; she asked for the cleanup now) |

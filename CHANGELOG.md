@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-07 (ENGR 40M dropped)
+- ENGR 40M moved from the class list to `dropped:` (Oct 7): Faith joined ARMLab (ME 191, 3 units) and takes 40M in
+  Spring 2027 instead. Canvas 231533 no longer syncs (assignments or calendar events); juno says she dropped it.
+  Its Todoist sub-project is archived, so the class check stays quiet about it.
+- ME 191 is deliberately not a juno class (Faith's call): its tasks live in Research › ARMLab, outside Classes.
+- Tests first (`test_classes.py`, `test_config.py`); 338 tests. Deployed together with the 2026-10-06
+  classes-and-holds change, which was on `main` but not yet live.
+
 ## 2026-10-06 (evening: classes and holds)
 - Auditing is over: EE 227 (CS 227A), EE 260A and AA 274A left the class list and moved to `dropped:` with
   `audit: true`; juno says "stopped auditing" for them. Their Todoist projects were already archived.

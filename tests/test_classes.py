@@ -43,18 +43,23 @@ def test_courses_config_knows_graded_audited_and_dropped_classes():
 
 
 def test_the_repo_courses_yaml_matches_her_classes():
-    """Her graded load on 2026-10-06, 20 units: CS 106B, CME 102, ENGR 40M, EE 100, EE 160A. No audits."""
+    """Her graded load on 2026-10-07: CS 106B, CME 102, EE 100, EE 160A. No audits.
+    ENGR 40M dropped Oct 7 (it moves to Spring 2027). ME 191 (ARMLab, 3 units S/NC) is deliberately not a class
+    here: Faith keeps its tasks in Research > ARMLab, outside Classes (her call, 2026-10-07)."""
     cfg = load_courses(REPO_COURSES)
-    assert [c.code for c in cfg.courses] == ["ENGR 40M", "CME 102", "EE 100", "CS 106B", "EE 160A"]
+    assert [c.code for c in cfg.courses] == ["CME 102", "EE 100", "CS 106B", "EE 160A"]
+    assert "ME 191" not in {c.code for c in cfg.courses}
     assert cfg.audits() == []
     assert cfg.alias_map() == {"AA 174A": "EE 160A", "CS 137A": "EE 160A"}           # one Canvas site, three codes
     assert [(d.code, d.audit) for d in cfg.dropped] == [("MATSCI 88Q", False), ("EE 310", False),
-                                                        ("EE 227", True), ("EE 260A", True), ("AA 274A", True)]
+                                                        ("EE 227", True), ("EE 260A", True), ("AA 274A", True),
+                                                        ("ENGR 40M", False)]
     assert {d.dropped_on for d in cfg.dropped if d.audit} == {date(2026, 10, 6)}
+    assert [d.dropped_on for d in cfg.dropped if d.code == "ENGR 40M"] == [date(2026, 10, 7)]
     assert cfg.course_projects()["EE 160A"] == "6hg9Mmh6R7Q68H7M"
-    assert set(cfg.by_canvas_id()) == {231533, 232579, 232825, 231155}               # EE 160A's assignments sync now
+    assert set(cfg.by_canvas_id()) == {232579, 232825, 231155}                       # ENGR 40M (231533) no longer syncs
     assert cfg.by_canvas_id()[231155].code == "EE 160A"
-    assert set(cfg.calendar_courses()) == {231533, 232579, 232825}                   # its 55 Canvas events wait for her say
+    assert set(cfg.calendar_courses()) == {232579, 232825}                           # nor do its Canvas calendar events
 
 
 def ops_for_classes(tmp_path, tasks=()):

@@ -102,13 +102,12 @@ def test_the_repo_courses_yaml_ships_every_course_with_its_sub_project():
     cfg = load_courses(REPO_COURSES)
     assert cfg.todoist.project_id == "6cXPJPmRH6GF2MPr"                # Classes stays the parent
     assert cfg.course_projects() == {
-        "ENGR 40M": "6hcWWXF2wPQ63xGP",
         "CME 102": "6hcWWXF7PMmh57v2",
         "EE 100": "6hcWWXGX4RFgHc5C",
         "CS 106B": "6hcWWXHRpx3H2RvF",
         "EE 160A": "6hg9Mmh6R7Q68H7M",
-    }                                                                   # EE 227 and EE 260A: audits ended 2026-10-06, projects archived
+    }                                                                   # EE 227, EE 260A (audits ended Oct 6), ENGR 40M (dropped Oct 7): projects archived
     assert {c.code: c.canvas_id for c in cfg.courses}["CS 106B"] is None
     # Dropped courses and ended audits stay out of the sync: MATSCI 88Q (Sep 30, 2026), EE 310 (Oct 2, 2026),
-    # EE 227, EE 260A, AA 274A (Oct 6, 2026).
-    assert not {"MATSCI 88Q", "EE 310", "EE 227", "EE 260A", "AA 274A"} & {c.code for c in cfg.courses}
+    # EE 227, EE 260A, AA 274A (Oct 6, 2026), ENGR 40M (Oct 7, 2026).
+    assert not {"MATSCI 88Q", "EE 310", "EE 227", "EE 260A", "AA 274A", "ENGR 40M"} & {c.code for c in cfg.courses}
