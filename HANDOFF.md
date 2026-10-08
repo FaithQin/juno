@@ -1,11 +1,12 @@
-# Handoff — state as of 2026-10-06 (~19:15 PDT, after repeating events (deployed) and the classes-and-holds change (**not deployed**))
+# Handoff — state as of 2026-10-07 (~20:15 PDT, after the ENGR 40M drop; everything on `main` is deployed)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
 
-## What is live (verified on the server; last deploy `90c5843`, 2026-10-06 18:05 PDT)
-**On `main` but not deployed:** the classes-and-holds change (no audits, EE 160A on Canvas, holds graphite);
-rows marked *after deploy* describe it. See Pending for the deploy note.
+## What is live (verified on the server; last deploy `f4e472c`, 2026-10-07 19:34 PDT)
+Deployed together: the 2026-10-06 classes-and-holds change (no audits, EE 160A on Canvas, holds graphite) and the
+2026-10-07 ENGR 40M drop. Rows below that say *after deploy* are now live. After the deploy, on the server:
+container up, 8 jobs scheduled, `assistant check`: 4 sub-projects ok (CME 102, EE 100, CS 106B, EE 160A), 49 active class tasks.
 
 | Piece | Cadence | Notes |
 |---|---|---|
@@ -20,7 +21,7 @@ rows marked *after deploy* describe it. See Pending for the deploy note.
 | Real browser (Playwright) | on demand | logins: gradescope, paperless (cs198, refreshed 2026-10-02), ed. **Canvas is never browsed** (API only); `browser_submit` asks first |
 | **Outlook → Stanford calendar** | every 10 min | published Outlook ICS link in `.env`. **Since 2026-10-06:** new items (incl. tentative invites) are **added without asking** and juno texts what it added or linked; items she said no to before stay off; ended meetings skipped; **heads-up 30 min before each Outlook meeting** (read from Google, so series and her own copies work). Never waits on another question. **Skips titles with ChemE / Chem-E / Chemical Engineering** (`outlook.skip`; she left ChemE). `sync_now("outlook")`; `assistant outlook --print`. `docs/13-outlook-auto-add-and-projects.md` |
 | **Duplicate check** | after every hourly Canvas sync + "check for duplicates" | proposed for deletion (undoable, links and **her notes** move to the kept task); keeps the task that ticks on submission. **Narrowed 2026-10-03:** same title in a project with due dates ≤ 1 day apart, *except* the same clock time on different days (a habit); a shared assignment link only with the same title or both names just the assignment's name reworded (`assignment_named`: "Lab 1 prelab" = "Prelab 1", work blocks never); Canvas-Gradescope twins by id. A pending duplicates question it no longer finds withdraws itself. `docs/10-duplicates.md` §4, `docs/11-…` |
-| **Classes** (`courses.yaml`) | — | *Live (2026-10-03 config):* graded ENGR 40M, CME 102, EE 100, CS 106B, EE 160A (no Canvas); audits EE 227, EE 260A, AA 274A. *After deploy (2026-10-06, Faith: "im done auditing lectures"; 20 units):* **graded only:** ENGR 40M, CME 102, EE 100 (Canvas), CS 106B (Paperless/Gradescope), **EE 160A** (Canvas **231155**, the shared AA 174A / CS 137A / EE 160A site, her enrollment is the EE 160A section; aliases AA 174A, CS 137A; Gradescope 1396967 by code; Ed 106110 "AA 174A 01" via the alias; **`canvas_events: false`**: its 55 Canvas calendar events stay off Google until she says). **Dropped:** MATSCI 88Q (Sep 30), EE 310 (Oct 2); **ended audits** (`audit: true` in `dropped:`): EE 227 / CS 227A, EE 260A, AA 274A (Oct 6). EE 227 and EE 260A's Todoist projects are archived (5 open tasks each, invisible to juno). Read-only `check` with the new config: 5 sub-projects ok, 91 active class tasks. `docs/15-classes-and-holds.md` |
+| **Classes** (`courses.yaml`) | — | **Live since 2026-10-07:** graded CME 102, EE 100 (Canvas), CS 106B (Paperless/Gradescope), **EE 160A** (Canvas 231155, the shared AA 174A / CS 137A / EE 160A site; aliases AA 174A, CS 137A; Gradescope 1396967 by code; Ed 106110; `canvas_events: false`). **Dropped:** MATSCI 88Q (Sep 30), EE 310 (Oct 2), **ENGR 40M (Oct 7**: she joined ARMLab and takes 40M in Spring 2027; Canvas 231533 no longer syncs; its Todoist sub-project `6hcWWXF2wPQ63xGP` archived); ended audits (`audit: true`): EE 227 / CS 227A, EE 260A, AA 274A (Oct 6). **ME 191 (ARMLab, 3 units S/NC) is deliberately not a class here** (Faith, Oct 7): its tasks live in Research › ARMLab (`6hhfR3JPGqGj76M6`), outside Classes. `docs/15-classes-and-holds.md`, DECISIONS 2026-10-07 |
 | **Class check** | daily 09:30 | texts once about a Canvas course or a Todoist project under Classes that `courses.yaml` doesn't know, or a synced course Canvas no longer lists (*after deploy:* a configured `canvas_id` counts as known whatever code Canvas shows, e.g. "F26-AA-174A-01..."); quiet when nothing changed (it found nothing on 2026-10-03). `course_watch.py`; state `kv["course_watch_seen"]` |
 | **Event colors** | when juno adds an event | her scheme from `assistant.yaml` `calendar.colors`: classes/sections flamingo, audits grape, exams tomato, else default; agreed with 107 of her next 109 Stanford events. *After deploy:* **holds (`HOLD: <Name> (<Org>)`) graphite** ahead of everything, **no audit color**, and `color_event` refuses to recolor a hold to anything but graphite (code gate). Canvas/Outlook copies stay default; no sync ever writes a color |
 
@@ -47,11 +48,12 @@ rows marked *after deploy* describe it. See Pending for the deploy note.
 - Details and reasoning: `docs/07-hardening.md`; decisions: `DECISIONS.md` (2026-09-24 night).
 
 ## Pending right now
-- **Deploy the classes-and-holds change** (on `origin/main`, not deployed; Faith said not to touch her calendar or Todoist,
-  so nothing was run against them). The main checkout's local `main` is behind `origin/main`: `git pull` there before
-  `scripts/deploy.sh`, or it would ship the old code. What the deploy changes: no audit lines in juno's context
-  ("stopped auditing" instead); the Canvas sync reads EE 160A (its only Canvas assignment is already submitted, so
-  nothing new today); EE 160A's Canvas calendar events are **not** copied (`canvas_events: false`).
+- **Done 2026-10-07: deployed** the classes-and-holds change together with the ENGR 40M drop (`f4e472c`). Done by hand in
+  the same session (Claude Code, not juno): ENGR 40M's Todoist sub-project archived; its Stanford-calendar lectures (Oct 9
+  on), PSET-due markers, labs, midterm and final deleted; TA-calendar office-hour series cleaned up. Nothing for juno to
+  re-sync, since 40M is in `dropped:`.
+- **Watch the first runs after the deploy** (Canvas hourly, Gradescope every 3 h, class check 09:30): none should touch
+  ENGR 40M. If the class check texts about "F26-ENGR-40M-01", the dropped-code match missed the Canvas course name.
 - **Faith to decide: EE 160A's Canvas calendar.** 55 events in the next 120 days (lectures, CA office hours, both
   section groups, homework releases). With `canvas_events: true` the next calendar run adds them all to Stanford
   without asking (the first run finished long ago). Off until she says.
