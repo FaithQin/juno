@@ -24,6 +24,7 @@ same" when, in the same course:
 | the numbers | digits in the name, course code removed, leading zeros dropped | `PSET 1`, `Pset1`, `Problem Set 1`, `HW 1` → `1`; `Lab 2A` → `2a` |
 | the kind words | `pre`, `post`, `lab`, `pset`, `quiz`, `exam`, ... after spelling aliases | `Pre-lab 1` and `Lab 1: Pre Lab` → {pre, lab}; never pairs with a post-lab |
 | the due date | within 2 days (her dates are often inferred from a syllabus) | Thu 11:59pm vs Fri 5pm: still hers |
+| …or her deadline | the Todoist deadline field counts as a date too; the closer one decides (§4) | planned Fri, deadline Mon, Gradescope Mon: hers |
 
 No number, no guess (`Final Project Proposal` is not matched to `Final Project presentation`).
 Each task is offered once, to the assignment with the closest due date.
@@ -90,11 +91,44 @@ an ordinary Canvas link still outranks both. Before a copy is deleted, notes Fai
 (anything more than a sync's one-line link) are appended to the kept task, logged so `undo` can
 take them back after the copies. Nothing is deleted without her yes.
 
+## 4. Planned work: the deadline is the date that counts (2026-10-08)
+
+Two misses had one cause. On 2026-10-06 the sync made "EE 160A: Homework 2 (Gradescope)" next to
+her "EE 160A: HW2 (Gradescope) (check date)"; on 2026-10-03 it made "ENGR 40M: Prelab 1
+(Gradescope)" next to her "ENGR 40M: Lab 1 prelab (Gradescope)". The titles were never the problem
+(`HW2` and `Homework 2` both read as `(2, {pset})`). The dates were:
+
+| her task | its due date | its Todoist deadline | Gradescope | gap the matcher saw |
+|---|---|---|---|---|
+| HW2 (check date) | Fri Oct 16 11:59pm (the syllabus) | Mon Oct 19 (the website) | Mon Oct 19 11:59pm | 3 days |
+| Lab 1 prelab | Sat Oct 3 5:40pm (a work block) | Mon Oct 5 | Mon Oct 5 6:00pm | 2 days 20 min |
+
+Since 2026-10-03 juno reads a task with a Todoist deadline as **planned work**: the due date is when
+she'll do it, the deadline is when it's due (`tasks.py`, doc 12 §4). The matcher predates that and
+measured only the due date, so both times it compared Gradescope's deadline with her *plan* and
+missed by a little. The prelab miss happened 55 seconds after she moved the block to that evening.
+
+The fix is in `matching.due_gap`: the deadline is one more date to compare, and the closer of the
+two decides. A task with only a deadline now counts as dated. Gradescope's exact time against a
+deadline (a day) compares by day, like a date-only task. The question then shows the deadline, so
+she can see why juno thinks they match:
+
+```
+- Homework 2 → EE 160A: HW2 (Gradescope) (check date) (gradescope: mon oct 19 11:59pm, yours: fri oct 16 11:59pm, deadline mon oct 19)
+```
+
+`_same_instant` ("both due …", and the heads-up after a yes) still compares the due date only: a
+deadline is a day, not a time, so it can't be "the same instant".
+
+The duplicate check (doc 10) doesn't catch these pairs afterwards either: the titles normalize
+differently (`hw2checkdate`, `homework2`) and her task links the course's homework page, not the
+Gradescope assignment. Pairs already made stay until she says what to do with them.
+
 ## Reading the code
 
 1. `canvas_client.py` — `gradescope_id_of`, `CanvasItem.gradescope_id`.
 2. `twins.py` — `twins_in`, `record_twins`, `load_twins`, `link_twins`.
-3. `matching.py` — `signature`, `same_work`, `plausible_matches`.
+3. `matching.py` — `signature`, `same_work`, `due_gap` (due date or deadline), `plausible_matches`.
 4. `gradescope_sync.py` — `run` (after the first run), `_ask_about_matches`, `approve_match`.
 5. `sync.py` — `run_sync` (twins before exact titles), `task_title`.
 6. `duplicates.py` — twins in `find_duplicates`, `hand_written`, `_carry_notes`.

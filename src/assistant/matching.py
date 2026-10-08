@@ -12,7 +12,9 @@ What has to agree, besides the course:
   * the numbers in the name ("PSET 1", "Pset1", "Problem Set 1" → 1; "Lab 2A" → 2a), never the
     course code's own digits;
   * the kind words: pre / post / lab / pset / quiz / exam ... (so a pre-lab never pairs with a post-lab);
-  * the due dates, within two days (her dates are often inferred from a syllabus).
+  * the due dates, within two days (her dates are often inferred from a syllabus). A Todoist
+    deadline counts as a due date too: on planned work the due date is when she'll do it and the
+    deadline is when it's due (2026-10-06, EE 160A HW2), so the closer of the two decides.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 from .canvas_client import CanvasItem
 from .config import Course
+from .tasks import deadline_of
 
 WINDOW = timedelta(days=2)
 SOURCE_RE = re.compile(r"\((?:gradescope|paperless|canvas|ed|check date)\)", re.IGNORECASE)
@@ -79,13 +82,14 @@ def _due(task, tz: ZoneInfo) -> datetime | date | None:
 
 def due_gap(item_due: datetime, task, tz: ZoneInfo) -> timedelta | None:
     """How far apart the two due dates are; None if the task has no date. A date-only task
-    compares by day."""
-    due = _due(task, tz)
-    if due is None:
-        return None
-    if isinstance(due, datetime):
-        return abs(item_due - due)
-    return abs(item_due.astimezone(tz).date() - due)
+    compares by day. Her Todoist deadline is a date too, and the closer one counts."""
+    gaps = []
+    for due in (_due(task, tz), deadline_of(task)):
+        if isinstance(due, datetime):
+            gaps.append(abs(item_due - due))
+        elif due is not None:
+            gaps.append(abs(item_due.astimezone(tz).date() - due))
+    return min(gaps, default=None)
 
 
 def plausible_matches(items: list[CanvasItem], tasks, *, course_for: dict[int, Course], task_course: dict[str, str],

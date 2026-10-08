@@ -309,6 +309,21 @@ async def test_a_new_item_that_looks_like_a_hand_made_task_is_asked_about_not_cr
     assert len(out.sent) == 1 and len(todoist.all_tasks()) == 1               # asked once; still waiting
 
 
+async def test_planned_work_is_asked_about_by_its_todoist_deadline(tmp_path):
+    """EE 160A HW2, 2026-10-06: her task was planned 3 days before Gradescope's date, with Gradescope's
+    day as its Todoist deadline. The sync made a second task instead of asking; it asks now, and
+    the question shows her deadline so the dates visibly agree."""
+    from datetime import date
+    mine = FakeTask("H3", "MATSCI 88Q: Pre-lab 2 (Gradescope) (check date)", FakeDue(datetime(2026, 10, 2, 12, 0)),
+                    project_id="P-MAT", deadline=SimpleNamespace(date=date(2026, 10, 5)))
+    job, store, todoist, out = make_project_job(tmp_path, [mine], browser=PagesBrowser({MAT_GS: [PRE_LAB_2()]}))
+    store.kv_set("gradescope_first_run_done", "1")
+    await job.run()
+    assert [t.id for t in todoist.all_tasks()] == ["H3"]
+    assert ("- Lab 2: Pre Lab → MATSCI 88Q: Pre-lab 2 (Gradescope) (check date) "
+            "(gradescope: mon oct 5 12:00pm, yours: fri oct 2 12:00pm, deadline mon oct 5)") in out.sent[0]
+
+
 async def test_yes_links_the_hand_made_task_so_submitting_ticks_it(tmp_path):
     browser = PagesBrowser({MAT_GS: [PRE_LAB_2()]})
     job, store, todoist, out = make_project_job(tmp_path, [hand_made_pre_lab_2()], browser=browser)

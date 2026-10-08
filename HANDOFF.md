@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-07 (~20:15 PDT, after the ENGR 40M drop; everything on `main` is deployed)
+# Handoff — state as of 2026-10-08 (the `gradescope_match` deadline fix is on `main`, **not deployed**; last deploy `f4e472c`)
 
 Read `AGENTS.md` for the rules. This file is the live snapshot: what is running, what is pending,
 what to do next. **Update it at the end of every working session.**
@@ -11,7 +11,7 @@ container up, 8 jobs scheduled, `assistant check`: 4 sub-projects ok (CME 102, E
 | Piece | Cadence | Notes |
 |---|---|---|
 | Canvas → Todoist sync | hourly | adopted 52 hand-made tasks on 2026-09-22; batches same-day quizzes; retries transient errors |
-| Gradescope → Todoist | every 3 h | via saved browser login; first run approved 2026-09-24; proposals asked once. **New:** an assignment that plausibly is a hand-made task (same course + number + pre/post/lab/pset words + due within 2 days) is **asked about** (`gradescope_match`), held back until she answers; yes links, no creates. `docs/11-hand-made-and-twins.md` |
+| Gradescope → Todoist | every 3 h | via saved browser login; first run approved 2026-09-24; proposals asked once. **New:** an assignment that plausibly is a hand-made task (same course + number + pre/post/lab/pset words + due within 2 days) is **asked about** (`gradescope_match`), held back until she answers; yes links, no creates. **On `main`, not deployed (2026-10-08):** her Todoist *deadline* counts as a date too (planned work: due = her plan, deadline = when it's due), the closer one decides, and the question shows it. Both known misses (HW2, Lab 1 prelab) were this. `docs/11-hand-made-and-twins.md` §4 |
 | **Canvas ↔ Gradescope twins** | with both syncs | a Canvas external tool names its Gradescope assignment (`custom_gradescope_resource_id`); both ids now link to one task, whichever side comes first. Pairings kept in `kv["gradescope_twins"]` (written by the Canvas sync) |
 | Canvas events → Stanford calendar | hourly | first run done (`kv calendar_first_run_done = 1`, read on the server 2026-10-06): a new Canvas event is **added without asking** and texted. Only an old course (230601) has linked events; *after deploy* reads `calendar_courses()` (EE 160A has `canvas_events: false`) |
 | Nudges: 8pm the evening before, 2h before | scan every 10 min | late ones say "i was offline"; a Todoist blip skips one scan quietly. **Planned work** (a Todoist deadline field, a duration, or "block" in the title) gets **one heads-up 10 min before a timed start** instead ("starting 3:00pm: … (1h · deadline thu)"). Audited classes get none (*after deploy:* there are none). |
@@ -57,9 +57,18 @@ container up, 8 jobs scheduled, `assistant check`: 4 sub-projects ok (CME 102, E
 - **Faith to decide: EE 160A's Canvas calendar.** 55 events in the next 120 days (lectures, CA office hours, both
   section groups, homework releases). With `canvas_events: true` the next calendar run adds them all to Stanford
   without asking (the first run finished long ago). Off until she says.
-- **Faith to know: two HW2 tasks in EE 160A** (read-only check, 2026-10-06): her "EE 160A: HW2 (Gradescope) (check date)"
-  and the Gradescope sync's "EE 160A: Homework 2 (Gradescope)" (linked to Gradescope 1396967). Same kind of miss as
-  the Lab 1 prelab: `gradescope_match` didn't ask. Not touched. Whether the duplicate check proposes it wasn't checked.
+- **Deploy the `gradescope_match` deadline fix** (2026-10-08, on `main`, not deployed; this session was told not to).
+  Nothing changes for pairs already made: Gradescope HW2 (8820420) is linked, so it is never asked about. The next
+  case it would catch: her "EE 160A: HW4 Part 1 (Gradescope) (check date)" (plan Nov 13, deadline Nov 17).
+- **Faith to decide: the two HW2 tasks in EE 160A** (`6hg9Mmh6R7Q68H7M`). Hers: "EE 160A: HW2 (Gradescope) (check date)"
+  (`6hg9QmV8rPxfr8HM`, made Oct 1, due Fri Oct 16 11:59pm, Todoist deadline Mon Oct 19, notes on the disputed date).
+  The sync's: "EE 160A: Homework 2 (Gradescope)" (`6hhM5VJqHqjwX9xv`, made Oct 6 16:40 PDT, due Mon Oct 19 11:59pm,
+  linked in `item_links` as gradescope 8820420, course 1396967; this is the one that **ticks on submission**).
+  **Why it happened (2026-10-08):** the matcher compared Gradescope's Mon Oct 19 with her *plan* (Fri Oct 16): 3 days,
+  past the 2-day window; her deadline (Oct 19) was ignored. **The duplicate check won't propose this pair** (titles
+  normalize to `hw2checkdate` / `homework2`, no shared assignment link). Both untouched. Options for her: delete hers
+  (undoable, after moving her notes onto the linked one), or keep hers and move the Gradescope link onto it (what a
+  "yes" to the question would have done; then delete the sync's copy, undoable). Not done without her yes.
 - **Unverified live:** no `HOLD:` event exists on her Stanford calendar yet (Sep–Dec, read-only), so the graphite rule
   follows her stated format only.
 - **2026-10-06 incident: the Human Capital interview (Tue Oct 6, 1:45pm, a tentative Outlook invite) never reached Faith.**
@@ -94,7 +103,9 @@ container up, 8 jobs scheduled, `assistant check`: 4 sub-projects ok (CME 102, E
   (SF Oct 9, Pavone, late window) moved onto "EE 160A: HW1 (Gradescope)"; undoable from Telegram. No question is pending,
   so the queued **Gradescope match question** ("1 new assignment looks like a task you already have") goes out at the
   next Gradescope run (~20:37 PDT) or on "sync gradescope". Which assignment it is wasn't checked.
-  **Unchecked:** why `gradescope_match` didn't ask about her "Lab 1 prelab" before the Gradescope twin was made on Oct 3.
+  **Answered 2026-10-08:** why `gradescope_match` didn't ask about her "Lab 1 prelab" on Oct 3: she had just moved it to a
+  work block that evening (5:40pm, deadline Mon Oct 5); Gradescope said Mon 6pm, 2 days 20 min from the block. Fixed
+  with HW2 (the deadline counts). Both prelab tasks were completed Oct 4; ENGR 40M is dropped, nothing to clean up.
 - **Reply gap closed (2026-10-04, `05d654c`, deployed):** a Telegram reply answers the waiting question only if the
   replied-to message was sent at or after its `asked_at`; a yes/no to an older version gets "nothing done: that question
   was replaced on …" plus the current one; any reply to an earlier message can't call `answer_proposal`. Faith asked
@@ -174,7 +185,7 @@ container up, 8 jobs scheduled, `assistant check`: 4 sub-projects ok (CME 102, E
 7. CS 106B course-site scrape; iMessage via Photon; public-repo scrub; Chromium sandbox hardening; narrow the nudge rule.
 
 ## How to pick this up in a fresh session
-1. `uv sync && uv run pytest` (expect 338 passing).
+1. `uv sync && uv run pytest` (expect 341 passing).
 2. Read this file, then `DECISIONS.md`, then `docs/07-hardening.md`, `docs/08-outlook.md`, `docs/09-per-course-projects.md`, `docs/10-duplicates.md`, `docs/11-hand-made-and-twins.md`, `docs/12-replies-colors-planned-classes.md`, `docs/13-outlook-auto-add-and-projects.md`, `docs/14-recurring-and-all-day-events.md` and `docs/15-classes-and-holds.md`.
 3. Check the server: `ssh root@165.232.146.165 'cd /opt/juno && docker compose ps && docker compose logs --tail=20 juno'`,
    and send `/status` in Telegram to see the cache share.

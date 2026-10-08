@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-08 (Gradescope match: the Todoist deadline counts)
+- Why the Gradescope sync made "EE 160A: Homework 2 (Gradescope)" next to her "EE 160A: HW2 (Gradescope) (check
+  date)" instead of asking: her task is planned work (due Fri Oct 16 = her plan, Todoist deadline Mon Oct 19), and
+  `matching.due_gap` measured only the due date: 3 days from Gradescope's Mon Oct 19, past the 2-day window. The
+  titles were fine. The Oct 3 "Lab 1 prelab" miss was the same: a work block 2 days 20 min before Gradescope's date,
+  deadline on Gradescope's day.
+- Fix: her Todoist deadline is one more date to compare; the closer one decides (a deadline-only task counts too).
+  The match question shows her deadline. `_same_instant` still compares the due date only. Tests with the exact
+  titles and dates first (`test_matching.py`, `test_gradescope_job.py`); 341 tests. `docs/11-…` §4.
+- Not deployed. Neither HW2 task was touched; the duplicate check doesn't propose that pair (checked locally).
+
 ## 2026-10-07 (ENGR 40M dropped)
 - ENGR 40M moved from the class list to `dropped:` (Oct 7): Faith joined ARMLab (ME 191, 3 units) and takes 40M in
   Spring 2027 instead. Canvas 231533 no longer syncs (assignments or calendar events); juno says she dropped it.

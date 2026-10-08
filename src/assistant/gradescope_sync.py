@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -27,10 +27,10 @@ from .canvas_client import CanvasItem
 from .config import CoursesConfig
 from .db import Store
 from .gradescope import BASE, match_courses, parse_course, parse_dashboard
-from .matching import due_gap, plausible_matches
+from .matching import plausible_matches
 from .sync import (_task_due_iso, adopt_by_title, adopt_links, adopt_same_title, apply_plan, format_report, iso,
                    plan_sync, task_title)
-from .tasks import course_of
+from .tasks import course_of, deadline_of
 from .twins import link_twins, load_twins
 
 Send = Callable[[str], Awaitable[None]]
@@ -196,8 +196,9 @@ class GradescopeSync:
         return raw.strftime("%a %b %-d").lower() if raw else "no date"
 
     def _same_instant(self, due_at: datetime, task) -> bool:
+        """Her due date is that exact time (her Todoist deadline, a day, doesn't count here)."""
         raw = getattr(getattr(task, "due", None), "date", None)
-        return isinstance(raw, datetime) and due_gap(due_at, task, self.tz) == timedelta(0)
+        return isinstance(raw, datetime) and due_at == (raw if raw.tzinfo else raw.replace(tzinfo=self.tz))
 
     async def _ask_about_matches(self, items, active, links, course_for, task_course, now, quiet):
         """Returns (item keys to hold back from the plan, report notes, text for a quiet run)."""
@@ -244,6 +245,8 @@ class GradescopeSync:
         for it, t in pairs:
             theirs = _fmt_due(it.due_at, self.tz)
             when = f"both due {theirs}" if self._same_instant(it.due_at, t) else f"gradescope: {theirs}, yours: {self._task_when(t)}"
+            if (deadline := deadline_of(t)) and not self._same_instant(it.due_at, t):     # planned work: why it matched
+                when += f", deadline {deadline.strftime('%a %b %-d').lower()}"
             lines.append(f"- {it.name} → {t.content} ({when})")
         lines.append("reply yes to link them (i'll tick it when you submit and follow gradescope's date changes), "
                      "or no to add it as a new task" if one else

@@ -51,7 +51,8 @@ def _minutes(task) -> int | None:
     return int(amount) * (1440 if getattr(d, "unit", "minute") == "day" else 1)
 
 
-def _deadline(task) -> date | None:
+def deadline_of(task) -> date | None:
+    """Todoist's deadline field as a date, or None."""
     raw = getattr(getattr(task, "deadline", None), "date", None)
     if isinstance(raw, str):
         return date.fromisoformat(raw[:10])
@@ -86,7 +87,7 @@ def due_task_from(task, *, tz: ZoneInfo, sections: dict[str, str],
     if isinstance(created, str):
         created = datetime.fromisoformat(created.replace("Z", "+00:00"))
 
-    minutes, deadline = _minutes(task), _deadline(task)
+    minutes, deadline = _minutes(task), deadline_of(task)
     if deadline:                         # she said where the deadline is, so the due date is her plan
         kind = "planned"
     elif tracked and task.id in tracked:  # an assignment a sync keeps: its date is the deadline
